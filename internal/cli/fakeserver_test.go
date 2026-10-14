@@ -42,6 +42,10 @@ type fakeServer struct {
 	appCode     map[string][]byte
 	sent        []string
 
+	tokens         map[int64]api.JSONObject
+	passwordResets []int64
+	passwords      []string
+
 	// The last request to /api/v2/echo/, for testing the api command.
 	lastPath   string
 	lastQuery  string

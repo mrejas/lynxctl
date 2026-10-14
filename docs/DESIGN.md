@@ -253,7 +253,12 @@ iotopenctl
 │   ├── message              list | get | create | edit | delete
 │   ├── output               list | get | create | edit | delete
 │   └── executor             list | get
-├── organization | user | role ... (later, admin)
+├── organization (org)       list | get | create | edit | delete | tree | meta
+│                            | force-password-reset
+├── user                     list | get | create | edit | delete | meta | password
+│   └── token                list | create | delete            [--user, default: me]
+├── role                     list | get | create | edit | delete
+├── permission               list
 │
 ├── search     [query] [--type T] [--meta k=v]    # global search
 ├── api        <METHOD> <path> [-f file] [--field k=v]
@@ -419,6 +424,37 @@ iotopenctl search kitchen --type function
 - `search` without a query lists everything matching the filters. `--type`
   accepts singular and plural forms.
 
+### Administration
+
+```text
+iotopenctl org tree                                  # the organization hierarchy
+iotopenctl org create --name "ACME Malmö"            # --parent defaults to your organization
+iotopenctl org delete "ACME Malmö" --force           # also deletes everything in it
+
+iotopenctl user get                                  # yourself ("me")
+iotopenctl user create --email eve@example.com --first-name Eve --last-name Adams --role user
+iotopenctl user password                             # asks for the current and new password
+iotopenctl user token create --name ci --expires 90d # prints the token once
+iotopenctl user token create --name ci -q | iotopenctl login --profile ci --api-key
+
+iotopenctl role create --name Integration --priority 5 --allow installation/list/all --deny 'functionx/+/delete'
+iotopenctl permission list --allowed
+```
+
+- Users are referred to by email address (or a unique part of it), ID, or
+  `me`. `user get` and `user token` default to `me`.
+- `--org` and `--parent` default to your organization when you belong to
+  exactly one.
+- `org delete --force` and `org force-password-reset` affect many users and
+  objects, and say so in their confirmation question.
+- `user password` asks for the new password twice. For your own account it
+  also asks for the current one. `--password-stdin` reads the passwords
+  from stdin instead, one per line.
+- `user token delete` warns when the token is the one the CLI is using.
+  Its alias is `revoke`.
+- `permission list` uses `/api/v2/permission`; the API documentation spells
+  it `perimission`, which the server does not answer to.
+
 ### `api`: the escape hatch
 
 Inspired by `gh api`. It makes every endpoint usable from day one, including
@@ -551,7 +587,8 @@ docs/                  design and user documentation
 4. **Polish (done):** dynamic completion, GoReleaser packaging (including
    the `lynxctl` alias), and manifests for scoop and winget.
 5. **More resources (done):** schedule, file, search, edge-app, notification.
-6. **Admin:** organization, user, role, permissions.
+6. **Admin (done):** organization, user (with tokens and passwords), role,
+   permissions.
 
 ## Future ideas
 

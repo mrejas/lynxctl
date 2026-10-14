@@ -115,6 +115,10 @@ Get started:
 		a.newEdgeAppCommand(),
 		a.newNotificationCommand(),
 		a.newSearchCommand(),
+		a.newOrganizationCommand(),
+		a.newUserCommand(),
+		a.newRoleCommand(),
+		a.newPermissionCommand(),
 		a.newAPICommand(),
 		a.newVersionCommand(),
 	)

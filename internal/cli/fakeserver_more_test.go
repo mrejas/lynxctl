@@ -71,6 +71,102 @@ func (f *fakeServer) registerMore(mux *http.ServeMux) {
 	}))
 
 	mux.HandleFunc("GET /api/v3beta/search", f.authed(f.search))
+
+	// Administration.
+	f.docs["/api/v2/organization"] = map[int64]api.JSONObject{
+		2: {"id": int64(2), "name": "ACME", "parent": int64(0), "meta": map[string]any{}},
+		3: {"id": int64(3), "name": "ACME Stockholm", "parent": int64(2), "meta": map[string]any{}},
+		4: {"id": int64(4), "name": "ACME Göteborg", "parent": int64(2), "meta": map[string]any{}},
+		5: {"id": int64(5), "name": "Stockholm South", "parent": int64(3), "meta": map[string]any{}},
+	}
+	f.docs["/api/v2/role"] = map[int64]api.JSONObject{
+		1: {"id": int64(1), "name": "Admin", "priority": int64(100), "permissions": map[string]any{"#": true}},
+		2: {"id": int64(2), "name": "User", "priority": int64(10), "permissions": map[string]any{"installation/list/all": true, "functionx/+/delete": false}},
+	}
+	f.docs["/api/v2/user"] = map[int64]api.JSONObject{
+		7: {"id": int64(7), "email": "jane@example.com", "first_name": "Jane", "last_name": "Doe", "role": int64(1), "organisations": []any{int64(2)}, "meta": map[string]any{}},
+		8: {"id": int64(8), "email": "bob@example.com", "first_name": "Bob", "last_name": "Smith", "role": int64(2), "organisations": []any{int64(3)}, "meta": map[string]any{}},
+	}
+	f.tokens = map[int64]api.JSONObject{
+		50: {"id": int64(50), "name": "laptop", "type": "user_created", "expires": int64(0), "current": true},
+	}
+	for _, base := range []string{"/api/v2/organization", "/api/v2/user", "/api/v2/role"} {
+		mux.HandleFunc(base, f.authed(f.collectionHandler))
+		mux.HandleFunc(base+"/{id}", f.authed(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodDelete {
+				f.lastQuery = r.URL.RawQuery
+			}
+			f.itemHandler(w, r)
+		}))
+	}
+	for _, base := range []string{"/api/v2/organization", "/api/v2/user"} {
+		coll := base
+		mux.HandleFunc(base+"/{id}/meta/{key}", f.authed(func(w http.ResponseWriter, r *http.Request) {
+			o, ok := f.docs[coll][pathID(r, "id")]
+			if !ok {
+				notFound(w)
+				return
+			}
+			meta := toMeta(o["meta"])
+			f.handleMeta(w, r, meta, nil)
+			m := map[string]any{}
+			for k, v := range meta {
+				m[k] = v
+			}
+			o["meta"] = m
+		}))
+	}
+	mux.HandleFunc("POST /api/v2/organization/{id}/force_password_reset", f.authed(func(w http.ResponseWriter, r *http.Request) {
+		f.passwordResets = append(f.passwordResets, pathID(r, "id"))
+		writeJSON(w, f.docs["/api/v2/organization"][pathID(r, "id")])
+	}))
+	mux.HandleFunc("PUT /api/v2/user/{id}/password", f.authed(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		if !readJSON(w, r, &body) {
+			return
+		}
+		if pathID(r, "id") == 7 && body["current_password"] != "secret" {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"message":"wrong current password"}`))
+			return
+		}
+		f.passwords = append(f.passwords, r.PathValue("id")+":"+body["new_password"])
+		writeJSON(w, map[string]string{"message": "ok"})
+	}))
+	mux.HandleFunc("/api/v2/user/{id}/security/token", f.authed(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			list := []api.JSONObject{}
+			for _, t := range f.tokens {
+				list = append(list, t)
+			}
+			sort.Slice(list, func(i, j int) bool { return num(list[i], "id") < num(list[j], "id") })
+			writeJSON(w, list)
+			return
+		}
+		var t api.JSONObject
+		if !readJSON(w, r, &t) {
+			return
+		}
+		t["id"] = f.newID()
+		t["type"] = "user_created"
+		f.tokens[num(t, "id")] = t
+		created := api.JSONObject{"token": "secret-token-value"}
+		for k, v := range t {
+			created[k] = v
+		}
+		writeJSON(w, created)
+	}))
+	mux.HandleFunc("DELETE /api/v2/user/{id}/security/token/{tid}", f.authed(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := f.tokens[pathID(r, "tid")]; !ok {
+			notFound(w)
+			return
+		}
+		delete(f.tokens, pathID(r, "tid"))
+		writeJSON(w, map[string]string{"message": "deleted"})
+	}))
+	mux.HandleFunc("GET /api/v2/permission", f.authed(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]bool{"installation/list/all": true, "functionx/+/add": true, "functionx/zwave/add": false})
+	}))
 }
 
 func (f *fakeServer) collectionHandler(w http.ResponseWriter, r *http.Request) {

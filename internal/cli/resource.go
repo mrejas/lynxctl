@@ -44,6 +44,10 @@ type resource struct {
 	// listFlags registers filter flags on the list command and returns a
 	// function giving the query to send.
 	listFlags func(cmd *cobra.Command) func() (url.Values, error)
+	// self is a reference the API resolves itself, such as "me" for users.
+	self string
+	// defaultRef, if set, makes the argument of get optional.
+	defaultRef string
 }
 
 // column is a table column of a resource list.
@@ -151,6 +155,10 @@ func (a *App) findResource(ctx context.Context, r *resource, ref string, exact b
 	path, err := r.collection(ctx)
 	if err != nil {
 		return nil, nil, "", err
+	}
+	if r.self != "" && ref == r.self {
+		o, err := s.Client.GetObjectAt(ctx, http.MethodGet, path+"/"+r.self, nil)
+		return o, s, path, err
 	}
 	if id, err := strconv.ParseInt(ref, 10, 64); err == nil {
 		o, err := s.Client.GetObjectAt(ctx, http.MethodGet, fmt.Sprintf("%s/%d", path, id), nil)
@@ -262,17 +270,27 @@ func (a *App) newResourceListCommand(r *resource) *cobra.Command {
 }
 
 func (a *App) newResourceGetCommand(r *resource) *cobra.Command {
+	use, short, args := "get "+a.refUse(r), fmt.Sprintf("Show a %s", r.noun), cobra.ExactArgs(1)
+	if r.defaultRef != "" {
+		use = fmt.Sprintf("get [%s]", r.noun)
+		short = fmt.Sprintf("Show a %s (default: %s)", r.noun, r.defaultRef)
+		args = cobra.MaximumNArgs(1)
+	}
 	return &cobra.Command{
-		Use:               "get " + a.refUse(r),
-		Short:             fmt.Sprintf("Show a %s", r.noun),
-		Args:              usageArgs(cobra.ExactArgs(1)),
+		Use:               use,
+		Short:             short,
+		Args:              usageArgs(args),
 		ValidArgsFunction: a.completeResource(r),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			pr, err := a.printer()
 			if err != nil {
 				return err
 			}
-			o, _, _, err := a.findResource(cmd.Context(), r, args[0], false)
+			ref := r.defaultRef
+			if len(args) == 1 {
+				ref = args[0]
+			}
+			o, _, _, err := a.findResource(cmd.Context(), r, ref, false)
 			if err != nil {
 				return err
 			}
