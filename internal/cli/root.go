@@ -110,6 +110,11 @@ Get started:
 		a.newInstallationCommand(),
 		a.newObjectCommand(deviceType),
 		a.newObjectCommand(functionType),
+		a.newScheduleCommand(),
+		a.newFileCommand(),
+		a.newEdgeAppCommand(),
+		a.newNotificationCommand(),
+		a.newSearchCommand(),
 		a.newAPICommand(),
 		a.newVersionCommand(),
 	)

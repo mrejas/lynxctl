@@ -244,13 +244,18 @@ iotopenctl
 ├── installation (inst, i)   list | get | create | edit | delete | meta
 ├── device       (dev, d)    list | get | create | edit | delete | meta | functions
 ├── function     (fn, f)     list | get | create | edit | delete | meta
-├── schedule                 list | get | create | edit | delete
-├── file                     list | get | upload | download | delete
-├── edge-app                 list | get | ... (later)
-├── notification             ... (later)
+├── schedule     (sched)     list | get | create | edit | delete | enable | disable
+├── file                     list | get | upload | replace | download | delete   [--org]
+├── edge-app     (app)       list | get | create | edit | versions | upload | publish
+│                            | download | options
+│   └── instance             list | get | create | edit | delete
+├── notification (notif)     send
+│   ├── message              list | get | create | edit | delete
+│   ├── output               list | get | create | edit | delete
+│   └── executor             list | get
 ├── organization | user | role ... (later, admin)
 │
-├── search     <query>                            # global search
+├── search     [query] [--type T] [--meta k=v]    # global search
 ├── api        <METHOD> <path> [-f file] [--field k=v]
 └── completion bash | zsh | fish | powershell
 ```
@@ -363,6 +368,56 @@ iotopenctl installation meta set customer=ACME         # current installation, o
   refer to the device. Deleting the current installation also unselects it.
 - Lists are sorted by ID. The function list shows the device and the read
   topic; `-o wide` adds the write topic and the update time.
+
+### Schedules, files, edge apps, notifications and search
+
+These share one implementation for list, get, create, edit and delete:
+objects are handled as JSON without a fixed schema, so new fields in the
+API work without changes to the CLI. On top of that, each resource has
+flags for what is natural to type:
+
+```text
+iotopenctl schedule create --function "hall lamp" --value on --cron "0 7 * * 1,2,3,4,5"
+iotopenctl schedule disable 1042
+
+iotopenctl file upload floorplan.png manual.pdf      # MIME type guessed
+iotopenctl file download floorplan                   # saved as ./floorplan.png
+iotopenctl file download config.json -O - | jq .
+iotopenctl file list --org 7                         # organization files
+
+iotopenctl edge-app create --name "Heating control" --category climate ...
+iotopenctl edge-app upload heating ./src             # app.json + app.lua, prints the hash
+iotopenctl edge-app publish heating 1.2.0            # names the newest upload
+iotopenctl edge-app instance create --app heating --config target=21
+
+iotopenctl notification message create --name Alarm --text '{{.payload.message}}'
+iotopenctl notification output create --name "Mail on-call" --executor mail --message alarm \
+    --config recipients=oncall@example.com
+iotopenctl notification send "mail on-call" -F message="Water leak"
+
+iotopenctl search kitchen --type function
+```
+
+- `create` takes `-f file` (YAML or JSON), `-F key=value` (typed, dotted
+  keys for nesting) and `--raw-field key=value`, like `api`, plus the
+  resource's own flags. Flags are applied on top of the file.
+- `edit` hides read-only fields (IDs, timestamps, the owning installation)
+  and sends them back unchanged.
+- References to executors, messages, apps and functions in flags accept
+  names, like everywhere else.
+- Schedules have no names and are referred to by ID. `--cron` takes the
+  five crontab fields; the API's own fields can be set with `-F`.
+- `file download` saves under the file's name and refuses to overwrite
+  without `--force`; `-O` chooses another path (`-o` is the output format).
+  `file replace` checks locally that the new content has the same MIME type,
+  which the API requires.
+- `edge-app download` writes to stdout only when it is redirected;
+  otherwise `-O` is required. `download` and `options` default to the
+  newest published version, and `publish` to the newest unpublished upload.
+  `instance create` defaults the version to the newest published one and
+  the name to the app's name.
+- `search` without a query lists everything matching the filters. `--type`
+  accepts singular and plural forms.
 
 ### `api`: the escape hatch
 
@@ -495,7 +550,7 @@ docs/                  design and user documentation
 3. **Values (done):** `get`, `set`, `watch`, `log`.
 4. **Polish (done):** dynamic completion, GoReleaser packaging (including
    the `lynxctl` alias), and manifests for scoop and winget.
-5. **More resources:** schedule, file, search, edge-app, notification.
+5. **More resources (done):** schedule, file, search, edge-app, notification.
 6. **Admin:** organization, user, role, permissions.
 
 ## Future ideas

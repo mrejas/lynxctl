@@ -35,6 +35,13 @@ type fakeServer struct {
 	published []api.Publish
 	lastLog   string // raw query of the last log request
 
+	// Endpoints of fakeserver_more_test.go.
+	docs        docStore
+	files       map[int64]*fakeFile
+	appVersions map[int64][]map[string]any
+	appCode     map[string][]byte
+	sent        []string
+
 	// The last request to /api/v2/echo/, for testing the api command.
 	lastPath   string
 	lastQuery  string
@@ -269,6 +276,7 @@ func newFakeServer(t *testing.T) *fakeServer {
 		writeJSON(w, map[string]string{"message": "ok"})
 	}))
 
+	f.registerMore(mux)
 	f.Server = httptest.NewServer(f.locked(mux))
 	t.Cleanup(f.Close)
 	return f

@@ -62,6 +62,9 @@ iotopenctl get kitchen                      # latest value
 iotopenctl set "hall lamp" on
 iotopenctl watch                            # live values
 iotopenctl log kitchen --since 7d --aggr avg --interval 1h
+iotopenctl schedule create --function "hall lamp" --value on --cron "0 7 * * 1,2,3,4,5"
+iotopenctl file upload floorplan.png
+iotopenctl search kitchen
 iotopenctl api 'functionx/{installation}?type=switch'
 ```
 
