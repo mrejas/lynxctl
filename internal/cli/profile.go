@@ -11,6 +11,7 @@ import (
 	"github.com/mrejas/lynx-cli/internal/api"
 	"github.com/mrejas/lynx-cli/internal/config"
 	"github.com/mrejas/lynx-cli/internal/output"
+	"github.com/mrejas/lynx-cli/internal/resolve"
 )
 
 // profileView is the JSON/YAML representation of a profile.
@@ -106,9 +107,9 @@ func (a *App) newProfileUseCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			name := args[0]
-			if cfg.Profile(name) == nil {
-				return a.noSuchProfile(name)
+			name, err := a.lookupProfile(args[0], false)
+			if err != nil {
+				return err
 			}
 			cfg.CurrentProfile = name
 			if err := cfg.Save(); err != nil {
@@ -140,7 +141,12 @@ func (a *App) newProfileShowCommand() *cobra.Command {
 				return err
 			}
 			if len(args) == 1 {
-				name = args[0]
+				if name, err = a.lookupProfile(args[0], false); err != nil {
+					return err
+				}
+			}
+			if name == "" {
+				return &exitError{code: ExitNotFound, err: fmt.Errorf("no profile selected. Run %q", a.Name+" profile list")}
 			}
 			if cfg.Profile(name) == nil {
 				return a.noSuchProfile(name)
@@ -168,7 +174,7 @@ func (a *App) newProfileDeleteCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "delete <profile>",
 		Aliases:           []string{"rm"},
-		Short:             "Log out and delete a profile",
+		Short:             "Log out and delete a profile (exact name required)",
 		Args:              usageArgs(cobra.ExactArgs(1)),
 		ValidArgsFunction: a.completeProfileArg,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -179,15 +185,16 @@ func (a *App) newProfileDeleteCommand() *cobra.Command {
 	return cmd
 }
 
-func (a *App) deleteProfile(ctx context.Context, name string, yes bool) error {
+func (a *App) deleteProfile(ctx context.Context, ref string, yes bool) error {
 	cfg, err := a.config()
 	if err != nil {
 		return err
 	}
-	p := cfg.Profile(name)
-	if p == nil {
-		return a.noSuchProfile(name)
+	name, err := a.lookupProfile(ref, true)
+	if err != nil {
+		return err
 	}
+	p := cfg.Profile(name)
 	if err := a.confirm(fmt.Sprintf("Delete profile %q (%s)?", name, p.URL), yes); err != nil {
 		return err
 	}
@@ -206,6 +213,17 @@ func (a *App) deleteProfile(ctx context.Context, name string, yes bool) error {
 	}
 	a.info("Deleted profile %q.", name)
 	return nil
+}
+
+// lookupProfile resolves a profile argument, with a helpful error if there is
+// no such profile.
+func (a *App) lookupProfile(ref string, exact bool) (string, error) {
+	name, err := a.findProfile(ref, exact)
+	var nf *resolve.NotFoundError
+	if errors.As(err, &nf) {
+		return "", a.noSuchProfile(ref)
+	}
+	return name, err
 }
 
 func (a *App) noSuchProfile(name string) error {

@@ -77,6 +77,11 @@ func newFakeServer(t *testing.T) *fakeServer {
 	return f
 }
 
+// host is the profile name a login to this server gets by default.
+func (f *fakeServer) host() string {
+	return strings.TrimPrefix(f.URL, "http://")
+}
+
 func (f *fakeServer) issue(w http.ResponseWriter, token, nextStep string) {
 	f.mu.Lock()
 	f.validKeys[token] = true
@@ -159,23 +164,23 @@ func (e *testEnv) config() *config.Config {
 
 func (e *testEnv) login(srv *fakeServer, extra ...string) {
 	e.t.Helper()
-	args := append([]string{"login", "--url", srv.URL, "-u", "jane@example.com", "--password-stdin"}, extra...)
+	args := append([]string{"login", srv.URL, "-u", "jane@example.com", "--password-stdin"}, extra...)
 	e.mustRun("secret\n", args...)
 }
 
 func TestLoginWithPassword(t *testing.T) {
 	srv := newFakeServer(t)
 	env := newTestEnv(t)
-	r := env.mustRun("secret\n", "login", "--url", srv.URL, "-u", "jane@example.com", "--password-stdin")
+	r := env.mustRun("secret\n", "login", srv.URL, "-u", "jane@example.com", "--password-stdin")
 	if !strings.Contains(r.stderr, "Logged in to "+srv.URL+" as Jane Doe <jane@example.com>") {
 		t.Errorf("unexpected stderr: %s", r.stderr)
 	}
 	cfg := env.config()
-	p := cfg.Profile("default")
-	if cfg.CurrentProfile != "default" || p == nil || p.URL != srv.URL || p.Auth != config.AuthPassword || p.Username != "jane@example.com" {
+	p := cfg.Profile(srv.host())
+	if cfg.CurrentProfile != srv.host() || p == nil || p.URL != srv.URL || p.Auth != config.AuthPassword || p.Username != "jane@example.com" {
 		t.Errorf("unexpected config: %+v %+v", cfg, p)
 	}
-	if secret, _ := env.secrets.Get("default"); secret != "token-jane" {
+	if secret, _ := env.secrets.Get(srv.host()); secret != "token-jane" {
 		t.Errorf("stored secret = %q", secret)
 	}
 }
@@ -183,11 +188,11 @@ func TestLoginWithPassword(t *testing.T) {
 func TestLoginWithTwoFactor(t *testing.T) {
 	srv := newFakeServer(t)
 	env := newTestEnv(t)
-	env.mustRun("secret\n123456\n", "login", "--url", srv.URL, "-u", "twofa@example.com", "--password-stdin")
-	if secret, _ := env.secrets.Get("default"); secret != "token-2fa" {
+	env.mustRun("secret\n123456\n", "login", srv.URL, "-u", "twofa@example.com", "--password-stdin")
+	if secret, _ := env.secrets.Get(srv.host()); secret != "token-2fa" {
 		t.Errorf("stored secret = %q", secret)
 	}
-	r := env.run("secret\n000000\n", "login", "--url", srv.URL, "-u", "twofa@example.com", "--password-stdin")
+	r := env.run("secret\n000000\n", "login", srv.URL, "-u", "twofa@example.com", "--password-stdin")
 	if r.code != ExitAuth || !strings.Contains(r.stderr, "wrong two-factor code") {
 		t.Errorf("wrong code: exit %d, stderr %s", r.code, r.stderr)
 	}
@@ -196,19 +201,19 @@ func TestLoginWithTwoFactor(t *testing.T) {
 func TestLoginFailures(t *testing.T) {
 	srv := newFakeServer(t)
 	env := newTestEnv(t)
-	r := env.run("wrong\n", "login", "--url", srv.URL, "-u", "jane@example.com", "--password-stdin")
+	r := env.run("wrong\n", "login", srv.URL, "-u", "jane@example.com", "--password-stdin")
 	if r.code != ExitAuth || !strings.Contains(r.stderr, "wrong username or password") {
 		t.Errorf("wrong password: exit %d, stderr %s", r.code, r.stderr)
 	}
-	r = env.run("", "login", "--url", srv.URL, "-u", "jane@example.com")
+	r = env.run("", "login", srv.URL, "-u", "jane@example.com")
 	if r.code != ExitUsage || !strings.Contains(r.stderr, "--password-stdin") {
 		t.Errorf("no terminal: exit %d, stderr %s", r.code, r.stderr)
 	}
-	r = env.run("bogus\n", "login", "--url", srv.URL, "--api-key")
+	r = env.run("bogus\n", "login", srv.URL, "--api-key")
 	if r.code != ExitAuth || !strings.Contains(r.stderr, "API key was rejected") {
 		t.Errorf("bad API key: exit %d, stderr %s", r.code, r.stderr)
 	}
-	if env.config().Profile("default") != nil {
+	if env.config().Profile(srv.host()) != nil {
 		t.Error("failed logins created a profile")
 	}
 }
@@ -216,8 +221,8 @@ func TestLoginFailures(t *testing.T) {
 func TestLoginWithAPIKeyAndLogoutKeepsKeyValid(t *testing.T) {
 	srv := newFakeServer(t)
 	env := newTestEnv(t)
-	env.mustRun("api-key-1\n", "login", "--url", srv.URL, "--api-key")
-	if p := env.config().Profile("default"); p.Auth != config.AuthAPIKey {
+	env.mustRun("api-key-1\n", "login", srv.URL, "--api-key")
+	if p := env.config().Profile(srv.host()); p.Auth != config.AuthAPIKey {
 		t.Errorf("auth = %q", p.Auth)
 	}
 	env.mustRun("", "logout")
@@ -247,10 +252,10 @@ func TestLogout(t *testing.T) {
 	if !strings.Contains(r.stderr, "Logged out") || len(srv.loggedOut) != 1 || srv.loggedOut[0] != "token-jane" {
 		t.Errorf("stderr %q, logged out %v", r.stderr, srv.loggedOut)
 	}
-	if _, err := env.secrets.Get("default"); err == nil {
+	if _, err := env.secrets.Get(srv.host()); err == nil {
 		t.Error("secret still stored after logout")
 	}
-	if env.config().Profile("default") == nil {
+	if env.config().Profile(srv.host()) == nil {
 		t.Error("logout deleted the profile")
 	}
 }
@@ -258,7 +263,7 @@ func TestLogout(t *testing.T) {
 func TestWhoami(t *testing.T) {
 	srv := newFakeServer(t)
 	env := newTestEnv(t)
-	if r := env.run("", "whoami"); r.code != ExitAuth || !strings.Contains(r.stderr, `Run "iotopenctl login"`) {
+	if r := env.run("", "whoami"); r.code != ExitAuth || !strings.Contains(r.stderr, `Run "iotopenctl login`) {
 		t.Errorf("whoami before login: exit %d, stderr %s", r.code, r.stderr)
 	}
 	env.login(srv)
@@ -273,7 +278,7 @@ func TestWhoami(t *testing.T) {
 		Profile string
 		User    struct{ Email string }
 	}
-	if err := json.Unmarshal([]byte(r.stdout), &data); err != nil || data.Profile != "default" || data.User.Email != "jane@example.com" {
+	if err := json.Unmarshal([]byte(r.stdout), &data); err != nil || data.Profile != srv.host() || data.User.Email != "jane@example.com" {
 		t.Errorf("json output %q: %v", r.stdout, err)
 	}
 	if r := env.mustRun("", "whoami", "-q"); r.stdout != "jane@example.com\n" {
@@ -313,7 +318,7 @@ func TestUse(t *testing.T) {
 	if !strings.Contains(r.stderr, "Main Street 2 (ID 11, client ID 1011)") {
 		t.Errorf("stderr: %s", r.stderr)
 	}
-	if inst := env.config().Profile("default").Installation; inst == nil || inst.ID != 11 {
+	if inst := env.config().Profile(srv.host()).Installation; inst == nil || inst.ID != 11 {
 		t.Errorf("stored installation = %+v", inst)
 	}
 
@@ -323,7 +328,7 @@ func TestUse(t *testing.T) {
 	}
 
 	env.mustRun("", "use", "--clear")
-	if inst := env.config().Profile("default").Installation; inst != nil {
+	if inst := env.config().Profile(srv.host()).Installation; inst != nil {
 		t.Errorf("installation after --clear = %+v", inst)
 	}
 }
@@ -375,26 +380,83 @@ func TestAPICommand(t *testing.T) {
 	}
 }
 
-func TestProfiles(t *testing.T) {
-	srv := newFakeServer(t)
+func TestSeveralServers(t *testing.T) {
+	prod, dev := newFakeServer(t), newFakeServer(t)
 	env := newTestEnv(t)
-	env.login(srv)
-	env.login(srv, "--profile", "dev")
-	if cur := env.config().CurrentProfile; cur != "default" {
-		t.Errorf("login to a second profile changed the current profile to %q", cur)
+
+	env.login(prod)
+	r := env.mustRun("secret\n", "login", "--profile", "dev", dev.URL, "-u", "jane@example.com", "--password-stdin")
+	if !strings.Contains(r.stderr, "Switched the current profile from") {
+		t.Errorf("no switch message: %s", r.stderr)
+	}
+	cfg := env.config()
+	if cfg.CurrentProfile != "dev" || cfg.Profile(prod.host()) == nil {
+		t.Fatalf("profiles after two logins: current %q, %v", cfg.CurrentProfile, cfg.ProfileNames())
+	}
+	want := prod.host() + "\ndev\n"
+	if r := env.mustRun("", "profile", "list", "-q"); r.stdout != want {
+		t.Errorf("profile list -q = %q, want %q", r.stdout, want)
 	}
 
-	if r := env.mustRun("", "profile", "list", "-q"); r.stdout != "default\ndev\n" {
-		t.Errorf("profile list -q = %q", r.stdout)
+	// Logging in to a known server again reuses its profile.
+	env.login(dev)
+	if names := env.config().ProfileNames(); len(names) != 2 || env.config().CurrentProfile != "dev" {
+		t.Errorf("re-login created a profile: %v", names)
 	}
+
+	// Profiles can be referred to by a unique part of the name.
+	env.mustRun("", "profile", "use", "127.0")
+	if cur := env.config().CurrentProfile; cur != prod.host() {
+		t.Errorf("current profile = %q", cur)
+	}
+	if r := env.mustRun("", "--profile", "de", "profile", "show", "-q"); r.stdout != "dev\n" {
+		t.Errorf("--profile de: %q", r.stdout)
+	}
+
+	// "login dev" logs in to the existing profile "dev" again.
+	env.mustRun("secret\n", "login", "dev", "-u", "jane@example.com", "--password-stdin")
+	if p := env.config().Profile("dev"); p.URL != dev.URL {
+		t.Errorf("login dev changed the URL to %q", p.URL)
+	}
+	if r := env.run("", "login", "nosuchprofile"); r.code != ExitUsage {
+		t.Errorf("login nosuchprofile: exit %d", r.code)
+	}
+
+	// Two profiles for the same server: the current one wins, otherwise the
+	// user must choose.
+	env.mustRun("secret\n", "login", "--profile", "second", prod.URL, "-u", "jane@example.com", "--password-stdin")
 	env.mustRun("", "profile", "use", "dev")
-	if r := env.mustRun("", "profile", "show", "-q"); r.stdout != "dev\n" {
-		t.Errorf("profile show -q = %q", r.stdout)
+	if r := env.run("secret\n", "login", prod.URL, "-u", "jane@example.com", "--password-stdin"); r.code != ExitUsage || !strings.Contains(r.stderr, "several profiles") {
+		t.Errorf("ambiguous server: exit %d, stderr %s", r.code, r.stderr)
 	}
+
+	// Log out from one profile, then from all.
+	env.mustRun("", "logout", "sec")
+	if _, err := env.secrets.Get("second"); err == nil {
+		t.Error("logout sec did not log out profile second")
+	}
+	if _, err := env.secrets.Get("dev"); err != nil {
+		t.Error("logout sec logged out dev too")
+	}
+	env.mustRun("", "logout", "--all")
+	for _, name := range env.config().ProfileNames() {
+		if _, err := env.secrets.Get(name); err == nil {
+			t.Errorf("profile %q still logged in after logout --all", name)
+		}
+	}
+}
+
+func TestProfileDelete(t *testing.T) {
+	srv := newFakeServer(t)
+	env := newTestEnv(t)
+	env.login(srv, "--profile", "dev")
+
 	if r := env.run("", "profile", "use", "nope"); r.code != ExitNotFound {
 		t.Errorf("profile use nope: exit %d", r.code)
 	}
-
+	if r := env.run("", "profile", "delete", "de", "--yes"); r.code != ExitNotFound {
+		t.Errorf("delete with a partial name: exit %d, want %d", r.code, ExitNotFound)
+	}
 	if r := env.run("", "profile", "delete", "dev"); r.code != ExitUsage || !strings.Contains(r.stderr, "--yes") {
 		t.Errorf("delete without --yes: exit %d, stderr %s", r.code, r.stderr)
 	}
@@ -405,6 +467,9 @@ func TestProfiles(t *testing.T) {
 	}
 	if _, err := env.secrets.Get("dev"); err == nil {
 		t.Error("secret of deleted profile still stored")
+	}
+	if len(srv.loggedOut) != 1 {
+		t.Errorf("deleting the profile did not invalidate its session: %v", srv.loggedOut)
 	}
 }
 
@@ -417,6 +482,8 @@ func TestUsageErrors(t *testing.T) {
 		{"profile", "use"},
 		{"-o", "xml", "profile", "list"},
 		{"login", "--api-key", "-u", "x"},
+		{"login", "dev"},
+		{"logout", "--all", "dev"},
 	} {
 		if r := env.run("", args...); r.code != ExitUsage {
 			t.Errorf("%v: exit %d, want %d (stderr %s)", args, r.code, ExitUsage, r.stderr)

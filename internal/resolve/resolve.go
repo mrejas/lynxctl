@@ -56,7 +56,17 @@ func (e *AmbiguousError) Error() string {
 	fmt.Fprintf(&b, "%q matches %d %ss:\n", e.Ref, len(e.Matches), e.Kind)
 	width := 0
 	for _, m := range e.Matches {
-		width = max(width, len(strconv.FormatInt(m.ID, 10)))
+		if m.ID != 0 {
+			width = max(width, len(strconv.FormatInt(m.ID, 10)))
+		}
+	}
+	// Objects without IDs (such as profiles) are listed by name only.
+	if width == 0 {
+		for _, m := range e.Matches {
+			fmt.Fprintf(&b, "  %s\n", m.Name)
+		}
+		b.WriteString("Use a more specific name.")
+		return b.String()
 	}
 	for _, m := range e.Matches {
 		fmt.Fprintf(&b, "  %*d  %s\n", width, m.ID, m.Name)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -86,22 +87,40 @@ func (a *App) secrets() config.SecretStore {
 }
 
 // profileName returns the active profile: --profile, then IOTOPEN_PROFILE,
-// then the current profile in the config, then "default".
+// then the current profile in the config. A reference from the flag or the
+// environment may be an exact name or a unique part of one; if it matches no
+// profile it is returned as is (login creates it). An empty name means no
+// profile is selected.
 func (a *App) profileName() (string, error) {
-	if a.profileFlag != "" {
-		return a.profileFlag, nil
-	}
-	if p := config.Getenv("PROFILE"); p != "" {
-		return p, nil
+	ref := a.profileFlag
+	if ref == "" {
+		ref = config.Getenv("PROFILE")
 	}
 	cfg, err := a.config()
 	if err != nil {
 		return "", err
 	}
-	if cfg.CurrentProfile != "" {
+	if ref == "" {
 		return cfg.CurrentProfile, nil
 	}
-	return config.DefaultProfile, nil
+	name, err := a.findProfile(ref, false)
+	var nf *resolve.NotFoundError
+	if errors.As(err, &nf) {
+		return ref, nil
+	}
+	return name, err
+}
+
+// findProfile resolves ref to the name of an existing profile: exact name,
+// then (unless exact is set) a unique part of a name.
+func (a *App) findProfile(ref string, exact bool) (string, error) {
+	cfg, err := a.config()
+	if err != nil {
+		return "", err
+	}
+	return resolve.Find("profile", ref, cfg.ProfileNames(), func(n string) resolve.Key {
+		return resolve.Key{Name: n}
+	}, resolve.Options{Exact: exact, NameOnly: true})
 }
 
 func (a *App) newClient(baseURL, apiKey string) *api.Client {
@@ -148,10 +167,13 @@ func (a *App) session() (*session, error) {
 	s.FromEnv = key != ""
 	if key == "" {
 		if s.Profile == nil {
-			if name == config.DefaultProfile {
-				return nil, authErrorf("not logged in. Run %q", a.Name+" login")
+			switch {
+			case name == "" && len(cfg.Profiles) > 0:
+				return nil, authErrorf("no profile selected. Run %q or pass --profile", a.Name+" profile use <profile>")
+			case name == "":
+				return nil, authErrorf("not logged in. Run %q", a.Name+" login [server]")
 			}
-			return nil, authErrorf("profile %q does not exist. Run %q to create it", name, a.Name+" login --profile "+name)
+			return nil, authErrorf("profile %q does not exist. Run %q to create it", name, a.Name+" login --profile "+name+" <server>")
 		}
 		key, err = a.secrets().Get(name)
 		if errors.Is(err, config.ErrNoSecret) {
@@ -166,11 +188,22 @@ func (a *App) session() (*session, error) {
 }
 
 // loginCommand returns the command a user should run to log in to profile.
-func (a *App) loginCommand(profile string) string {
-	if profile == config.DefaultProfile {
-		return a.Name + " login"
+func (a *App) loginCommand(name string) string {
+	if cfg, err := a.config(); err == nil {
+		if p := cfg.Profile(name); p != nil && hostOf(p.URL) == name {
+			return a.Name + " login " + name
+		}
 	}
-	return a.Name + " login --profile " + profile
+	return a.Name + " login --profile " + name
+}
+
+// hostOf returns the host (with port, if any) of a server URL.
+func hostOf(serverURL string) string {
+	u, err := url.Parse(serverURL)
+	if err != nil || u.Host == "" {
+		return serverURL
+	}
+	return u.Host
 }
 
 // installation returns the installation to operate on: -i, then

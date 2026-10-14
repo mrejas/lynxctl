@@ -68,16 +68,40 @@ nobody should need to look up an installation ID twice.
 
 ### Profiles
 
-A profile describes one IoT Open environment (a server URL plus
-credentials). Profiles replace the `.config` file of the old bash scripts.
+A profile is one login: a server URL plus credentials and a current
+installation. Profiles replace the `.config` file of the old bash scripts.
+Many people work with several platform instances, so you can be logged in
+to any number of servers at once, as with `docker login`.
 
 ```text
-iotopenctl login                                   # profile "default", https://lynx.iotopen.se
-iotopenctl login --profile dev --url https://lynx-dev.iotopen.se
+iotopenctl login                            # lynx.iotopen.se -> profile "lynx.iotopen.se"
+iotopenctl login lynx-dev.iotopen.se        # profile "lynx-dev.iotopen.se"
+iotopenctl login --profile customer customer.example.com   # custom name
 iotopenctl profile list
-iotopenctl profile use dev
-iotopenctl --profile dev installation list         # one-off override
+iotopenctl profile use dev                  # unique part of "lynx-dev.iotopen.se"
+iotopenctl --profile dev installation list  # one-off override
+iotopenctl login dev                        # log in again after the session expired
+iotopenctl logout dev
+iotopenctl logout --all
 ```
+
+Rules:
+
+- A profile is named after the server's host unless `--profile` is given.
+  `--profile` is needed only for a shorter name or for a second account on
+  the same server.
+- `login <server>` reuses the profile that already uses that server. If
+  several profiles use it, the current one wins; otherwise `--profile` is
+  required.
+- `login <name>`, where the argument has no dot, colon or slash, logs in to
+  an existing profile again.
+- `login` without arguments logs in to the current profile again, or to
+  `https://lynx.iotopen.se` if there is none.
+- The profile you log in to becomes the current profile. If that changes
+  the current profile, `login` says so and shows how to switch back.
+- Everywhere a profile is given (`--profile`, `IOTOPEN_PROFILE`,
+  `profile use`, `logout`, ...), an exact name or a unique part of a name
+  works. `profile delete` requires the exact name.
 
 Configuration file (the directory can be overridden with
 `IOTOPEN_CONFIG_DIR`):
@@ -88,9 +112,9 @@ Configuration file (the directory can be overridden with
 - Windows: `%AppData%\iotopenctl\config.yaml`.
 
 ```yaml
-current-profile: default
+current-profile: lynx.iotopen.se
 profiles:
-  default:
+  lynx.iotopen.se:
     url: https://lynx.iotopen.se
     username: jane.doe@example.com
     auth: password            # or api-key
@@ -98,9 +122,10 @@ profiles:
       id: 42
       name: Main Street 1     # cached for display
       client-id: 1042
-  dev:
+  lynx-dev.iotopen.se:
     url: https://lynx-dev.iotopen.se
     username: jane.doe@example.com
+    auth: api-key
 ```
 
 Secrets (session tokens and API keys) are never written to `config.yaml`.
@@ -113,8 +138,8 @@ forces the file store.
 
 | Method            | Command                    | Notes                                    |
 |-------------------|----------------------------|------------------------------------------|
-| Username/password | `iotopenctl login`         | Prompts for password and, if enabled, the 2FA code. `--password-stdin` for scripts. |
-| API key           | `iotopenctl login --api-key` | Prompts for the key, or reads it from stdin |
+| Username/password | `iotopenctl login [server]` | Prompts for password and, if enabled, the 2FA code. `--password-stdin` for scripts. |
+| API key           | `iotopenctl login --api-key [server]` | Prompts for the key, or reads it from stdin |
 | Environment       | `IOTOPEN_API_KEY=...`      | For CI and scripts. Nothing is stored.   |
 
 - `login` with username and password calls `POST /api/v2/auth` using basic
@@ -340,7 +365,7 @@ iotopenctl api GET /api/v3beta/log/{installation}         # absolute path
 ## Errors and safety
 
 - Error messages say what to do next:
-  - `Not logged in. Run "iotopenctl login".`
+  - `Not logged in. Run "iotopenctl login [server]".`
   - `No installation selected. Run "iotopenctl use <installation>" or pass -i.`
 - HTTP errors include the status code and the API's message. `--debug`
   prints the full requests and responses, with secrets redacted.

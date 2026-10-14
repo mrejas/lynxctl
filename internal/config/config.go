@@ -17,8 +17,6 @@ const (
 	AppName = "iotopenctl"
 	// DefaultURL is the server used when nothing else is configured.
 	DefaultURL = "https://lynx.iotopen.se"
-	// DefaultProfile is the profile used when nothing else is selected.
-	DefaultProfile = "default"
 
 	configFileName = "config.yaml"
 )

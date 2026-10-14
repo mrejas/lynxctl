@@ -24,12 +24,16 @@ iotopenctl whoami
 iotopenctl api 'functionx/{installation}?type=switch'
 ```
 
-More servers are handled with profiles:
+You can be logged in to several servers at once. Each login is a profile,
+named after the server, and the last one you logged in to is the current
+one. Profiles can be referred to by any unique part of their name:
 
 ```sh
-iotopenctl login --profile dev --url lynx-dev.iotopen.se
-iotopenctl --profile dev whoami
-iotopenctl profile use dev
+iotopenctl login lynx-dev.iotopen.se
+iotopenctl profile list
+iotopenctl --profile lynx.io whoami     # one-off
+iotopenctl profile use dev              # switch
+iotopenctl logout --all
 ```
 
 For scripts and CI, use an API key from the environment instead of logging in:
