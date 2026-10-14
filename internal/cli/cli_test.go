@@ -16,6 +16,8 @@ type testEnv struct {
 	secrets *config.FileStore
 	// editor, if set, is run instead of $EDITOR.
 	editor func(path string) error
+	// subscribe, if set, replaces the MQTT connection of watch.
+	subscribe subscribeFunc
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -44,6 +46,7 @@ func (e *testEnv) run(stdin string, args ...string) result {
 		ConfigDir: e.dir,
 		Secrets:   e.secrets,
 		RunEditor: e.editor,
+		Subscribe: e.subscribe,
 	}
 	code := app.Run(args)
 	return result{stdout.String(), stderr.String(), code}

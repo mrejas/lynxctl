@@ -39,6 +39,8 @@ type App struct {
 	HTTPClient *http.Client
 	// RunEditor replaces launching $EDITOR (used by tests).
 	RunEditor func(path string) error
+	// Subscribe replaces the MQTT connection of watch (used by tests).
+	Subscribe subscribeFunc
 
 	// Global flags.
 	profileFlag      string

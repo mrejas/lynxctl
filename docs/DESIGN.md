@@ -183,6 +183,7 @@ then environment variable, then profile config.
 | `IOTOPEN_URL`          | Server URL                       |
 | `IOTOPEN_API_KEY`      | API key (bypasses stored creds)  |
 | `IOTOPEN_INSTALLATION` | Installation reference           |
+| `IOTOPEN_BROKER`       | MQTT broker for `watch`          |
 | `IOTOPEN_CONFIG_DIR`   | Configuration directory          |
 | `IOTOPEN_NO_KEYRING`   | Store secrets in a file, not the keyring |
 
@@ -234,10 +235,10 @@ iotopenctl
 ├── profile    list | use | show | delete
 ├── use        [installation]
 │
-├── get        <function>                         # latest value
-├── set        <function> <value>                 # write a value
-├── watch      <function|--topic T>...            # live values over MQTT
-├── log        <function>... [--since|--from|--to] [--aggr]
+├── get        [function|--topic T]...            # latest value
+├── set        <function|--topic T> <value>       # write a value
+├── watch      [function|--topic T]...            # live values over MQTT
+├── log        [function|--topic T]... [--since|--from|--to] [--aggr --interval]
 │
 ├── installation (inst, i)   list | get | create | edit | delete | meta
 ├── device       (dev, d)    list | get | create | edit | delete | meta | functions
@@ -261,31 +262,53 @@ Every command has aliases for the common short forms: `ls` for `list`, and
 These are the everyday commands and are kept as short as possible.
 
 ```text
-iotopenctl get "temp kök"
-iotopenctl set "lampa hall" 1
-iotopenctl watch "temp kök" "temp ute"
-iotopenctl watch --topic '+/obj/#'
-iotopenctl log "temp kök" --since 24h --aggr 1h:avg
+iotopenctl get                                  # all functions with their latest value
+iotopenctl get "temp kök" "temp ute"
+iotopenctl get "temp kök" -q                    # just the number
+iotopenctl set "lampa hall" on                  # numbers, on/off, true/false; "21,5" works too
+iotopenctl watch                                # everything under obj/# live
+iotopenctl watch "temp kök" --count 1 -q        # wait for the next value
+iotopenctl watch --topic 'obj/zwave/#'
+iotopenctl log "temp kök" --since 7d --aggr avg --interval 1h
+iotopenctl log "temp kök" --from 2026-10-01 --to 2026-10-02 -o csv
 ```
 
 | Command | Implementation                                                        |
 |---------|-----------------------------------------------------------------------|
-| `get`   | Resolve the function, read meta `topic_read`, call `GET /api/v2/status/{installation}?topics=...` |
-| `set`   | Resolve the function, read meta `topic_write`, call `POST /api/v2/mqtt/publish/{installation}` with `{"value": ...}`. No MQTT connection is needed. |
-| `watch` | MQTT over TLS (port 8883). The token or API key is the password and the username is arbitrary. Subscribes to the function's `topic_read`. |
-| `log`   | `GET /api/v3beta/log/{installation}` with `topics`, `from`, `to`, `limit`, `order`, `aggr_method`, `aggr_interval` |
+| `get`   | Read meta `topic_read` of the functions, call `POST /api/v2/status/{installation}` with the topics (or `GET` for all). |
+| `set`   | Read meta `topic_write`, call `POST /api/v2/mqtt/publish/{installation}` with `{"topic": ..., "payload": {"value": ...}}`. No MQTT connection is needed. |
+| `watch` | MQTT over TLS on the server's host, port 8883 (override with `--broker` or `IOTOPEN_BROKER`). The token or API key is the password; the username is not checked. |
+| `log`   | `GET /api/v3beta/log/{installation}` with `topics`, `from`, `to`, `limit`, `order=desc`, and `aggr_method`/`aggr_interval` only when asked for. |
 
-To verify against the API:
+Topics:
 
-- Whether `topic_read` and `topic_write` are relative topics (prefixed with
-  `client_id` on the broker) or full topics.
-- The exact request body of `/api/v2/mqtt/publish`.
+- Status and log responses use full topics, prefixed with the
+  installation's client ID (`1010/obj/zwave/12/temperature`). The publish
+  endpoint takes topics relative to the installation
+  (`obj/zwave/12/temperature`).
+- `topic_read`/`topic_write` may be stored in either form; the CLI adds or
+  strips the client ID prefix as each endpoint needs. `--topic` arguments are
+  relative to the installation.
+
+Presentation:
+
+- Values are formatted like in the frontend: with the C-style `format` meta
+  key (`%.1f °C`), else followed by `unit`. `-q` prints raw values, and
+  JSON/YAML include both the raw and the formatted value.
+- `log` fetches newest first (so `--limit` keeps the latest values) and
+  shows them oldest first. It says so when more values match than were
+  shown. The name column is left out when only one function is shown.
+- `watch` prints one line per value. With `-o json` it prints one JSON
+  object per line. `--count N` stops after N values.
+- `get` without arguments lists all functions that have a `topic_read`.
+  Naming a function without one is an error, and so is `set` on a function
+  without a `topic_write`.
 
 Time arguments (`--since`, `--from`, `--to`) accept:
 
-- Relative durations: `90s`, `15m`, `2h`, `7d`.
+- Relative durations: `90s`, `15m`, `2h`, `7d`, `2w`, `1d12h`.
 - RFC 3339 timestamps (`2026-10-01T12:00:00+02:00`).
-- Plain dates (`2026-10-01`, interpreted in local time).
+- Local dates and times (`2026-10-01`, `"2026-10-01 12:00"`).
 - Unix timestamps.
 
 ### CRUD and metadata
@@ -436,7 +459,7 @@ docs/                  design and user documentation
    - `meta`
    - `--meta` and `--type` filters
    - reference resolution
-3. **Values:** `get`, `set`, `watch`, `log`.
+3. **Values (done):** `get`, `set`, `watch`, `log`.
 4. **Polish:** dynamic completion, GoReleaser packaging (including the
    `lynxctl` alias), and installation through scoop and winget.
 5. **More resources:** schedule, file, search, edge-app, notification.

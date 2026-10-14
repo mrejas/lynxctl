@@ -25,6 +25,10 @@ iotopenctl function list
 iotopenctl function get kitchen             # unique part of the name
 iotopenctl function meta set kitchen unit=°C
 iotopenctl device functions "hall sensor"
+iotopenctl get kitchen                      # latest value
+iotopenctl set "hall lamp" on
+iotopenctl watch                            # live values
+iotopenctl log kitchen --since 7d --aggr avg --interval 1h
 iotopenctl api 'functionx/{installation}?type=switch'
 ```
 

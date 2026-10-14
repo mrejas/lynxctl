@@ -166,6 +166,14 @@ func WriteJSON(w io.Writer, v any) error {
 	return enc.Encode(v)
 }
 
+// WriteCompactJSON writes v as JSON on a single line, for streams of
+// objects (one per line).
+func WriteCompactJSON(w io.Writer, v any) error {
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	return enc.Encode(v)
+}
+
 // WriteYAML writes v as YAML. It goes through JSON so that the field names
 // and order match the JSON output.
 func WriteYAML(w io.Writer, v any) error {

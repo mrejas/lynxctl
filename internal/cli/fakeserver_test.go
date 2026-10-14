@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,6 +27,11 @@ type fakeServer struct {
 	installations map[int64]*api.Installation
 	objects       map[api.ObjectKind]map[int64]*api.Object
 	nextID        int64
+
+	// Values: the full log, and what was published.
+	values    []api.Status
+	published []api.Publish
+	lastLog   string // raw query of the last log request
 
 	// The last request to /api/v2/echo/, for testing the api command.
 	lastPath   string
@@ -210,6 +216,57 @@ func newFakeServer(t *testing.T) *fakeServer {
 		}))
 	}
 
+	// Values.
+	mux.HandleFunc("/api/v2/status/{inst}", f.authed(func(w http.ResponseWriter, r *http.Request) {
+		var topics []string
+		if r.Method == http.MethodPost && !readJSON(w, r, &topics) {
+			return
+		}
+		latest := map[string]api.Status{}
+		for _, v := range f.values {
+			if v.InstallationID == pathID(r, "inst") && (len(topics) == 0 || slices.Contains(topics, v.Topic)) {
+				if cur, ok := latest[v.Topic]; !ok || v.Timestamp > cur.Timestamp {
+					latest[v.Topic] = v
+				}
+			}
+		}
+		list := []api.Status{}
+		for _, v := range latest {
+			list = append(list, v)
+		}
+		writeJSON(w, list)
+	}))
+	mux.HandleFunc("GET /api/v3beta/log/{inst}", f.authed(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		f.lastLog = r.URL.RawQuery
+		from, _ := strconv.ParseFloat(q.Get("from"), 64)
+		to, _ := strconv.ParseFloat(q.Get("to"), 64)
+		limit, _ := strconv.Atoi(q.Get("limit"))
+		if limit == 0 {
+			limit = 10000
+		}
+		var matching []api.Status
+		for _, v := range f.values {
+			if v.InstallationID != pathID(r, "inst") || (len(q["topics"]) > 0 && !slices.Contains(q["topics"], v.Topic)) ||
+				(from != 0 && v.Timestamp < from) || (to != 0 && v.Timestamp > to) {
+				continue
+			}
+			matching = append(matching, v)
+		}
+		sort.Slice(matching, func(i, j int) bool { return matching[i].Timestamp > matching[j].Timestamp })
+		page := api.LogPage{Total: len(matching), Data: matching[:min(limit, len(matching))]}
+		page.Count = len(page.Data)
+		writeJSON(w, page)
+	}))
+	mux.HandleFunc("POST /api/v2/mqtt/publish/{inst}", f.authed(func(w http.ResponseWriter, r *http.Request) {
+		var p api.Publish
+		if !readJSON(w, r, &p) {
+			return
+		}
+		f.published = append(f.published, p)
+		writeJSON(w, map[string]string{"message": "ok"})
+	}))
+
 	f.Server = httptest.NewServer(f.locked(mux))
 	t.Cleanup(f.Close)
 	return f
@@ -287,6 +344,17 @@ func (f *fakeServer) sortedObjects(kind api.ObjectKind) []*api.Object {
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
 	return list
+}
+
+// addValue records a reported value of a (relative) topic.
+func (f *fakeServer) addValue(installationID int64, topic string, value, timestamp float64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cid := f.installations[installationID].ClientID
+	f.values = append(f.values, api.Status{
+		ClientID: cid, InstallationID: installationID, Timestamp: timestamp, Value: value,
+		Topic: strconv.FormatInt(cid, 10) + "/" + topic,
+	})
 }
 
 // object returns a stored object, for assertions in tests.

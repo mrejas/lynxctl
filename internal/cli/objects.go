@@ -41,6 +41,7 @@ type editableObject struct {
 type scope struct {
 	*session
 	installation int64
+	clientID     int64 // zero if not known yet; see App.clientID
 }
 
 func (a *App) scope(ctx context.Context) (*scope, error) {
@@ -52,7 +53,7 @@ func (a *App) scope(ctx context.Context) (*scope, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &scope{session: s, installation: inst.ID}, nil
+	return &scope{session: s, installation: inst.ID, clientID: inst.ClientID}, nil
 }
 
 // findObject resolves a reference to a device or function. A numeric
