@@ -22,3 +22,5 @@ for name in iotopenctl lynxctl; do
 	"$tmp/$name" completion fish >"$out/$name.fish"
 	"$tmp/$name" completion powershell >"$out/$name.ps1"
 done
+# Packages and archives take the mode from the files; do not depend on umask.
+chmod 0644 "$out"/*

@@ -42,6 +42,9 @@ builds:
 archives:
   - id: default
     ids: [iotopenctl, lynxctl]
+    # Windows archives also contain lynxctl.exe; elsewhere the alias is a
+    # symlink created by the package or the user.
+    allow_different_binary_count: true
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
     format_overrides:
@@ -62,6 +65,7 @@ nfpms:
     maintainer: Marcus Rejås
     description: Command line interface for the IoT Open platform (formerly Lynx).
     license: GPL-3.0-or-later
+    section: utils
     formats: [deb, rpm, apk]
     bindir: /usr/bin
     contents:
@@ -103,6 +107,8 @@ nfpms:
       - src: LICENSE
         dst: /usr/share/doc/iotopenctl/copyright
         packager: deb
+        file_info:
+          mode: 0644
 
 checksum:
   name_template: checksums.txt
