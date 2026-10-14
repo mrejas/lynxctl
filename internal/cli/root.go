@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package cli
 
 import (
@@ -143,22 +145,6 @@ func (a *App) completeProfiles(*cobra.Command, []string, string) ([]string, cobr
 		return nil, cobra.ShellCompDirectiveError
 	}
 	return cfg.ProfileNames(), cobra.ShellCompDirectiveNoFileComp
-}
-
-func (a *App) completeInstallations(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-	s, err := a.session()
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveError
-	}
-	list, err := s.Client.InstallationInfos(cmd.Context())
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveError
-	}
-	names := make([]string, len(list))
-	for i, inst := range list {
-		names[i] = fmt.Sprintf("%s\tID %d, client ID %d", inst.Name, inst.ID, inst.ClientID)
-	}
-	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
 func (a *App) newVersionCommand() *cobra.Command {

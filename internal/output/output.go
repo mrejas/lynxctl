@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package output prints data as tables, details, JSON, YAML or CSV.
 package output
 

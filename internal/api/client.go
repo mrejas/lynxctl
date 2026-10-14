@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package api is a small client for the IoT Open REST API.
 package api
 

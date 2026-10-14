@@ -184,6 +184,7 @@ then environment variable, then profile config.
 | `IOTOPEN_API_KEY`      | API key (bypasses stored creds)  |
 | `IOTOPEN_INSTALLATION` | Installation reference           |
 | `IOTOPEN_BROKER`       | MQTT broker for `watch`          |
+| `IOTOPEN_CACHE_DIR`    | Cache directory for completion   |
 | `IOTOPEN_CONFIG_DIR`   | Configuration directory          |
 | `IOTOPEN_NO_KEYRING`   | Store secrets in a file, not the keyring |
 
@@ -429,12 +430,44 @@ iotopenctl api GET /api/v3beta/log/{installation}         # absolute path
 
 ## Shell completion
 
-- Completion scripts are generated for bash, zsh, fish and PowerShell.
+- Completion scripts are generated for bash, zsh, fish and PowerShell, for
+  both program names (`scripts/completions.sh`).
 - Completion is dynamic: profile names, installation names, device and
-  function names, meta keys and function types are fetched from the API.
-  Lookups are cached briefly so pressing Tab stays fast.
+  function names, meta keys (as `key=` for `meta set`) and function types
+  come from the configuration and the API.
+- Lists fetched from the API are cached for one minute in the user cache
+  directory (`IOTOPEN_CACHE_DIR` overrides it), so pressing Tab repeatedly
+  costs one API call. Only names, IDs and types are cached, never secrets.
+- Commands that take several functions (`get`, `log`, `watch`) do not
+  suggest functions already on the command line.
+- Without a login, completion offers nothing instead of printing errors.
 - Packages install the completion scripts automatically where the platform
   supports it.
+
+## Packaging and releases
+
+Releases are built by GoReleaser (`.goreleaser.yaml`) when a `v*` tag is
+pushed, and published as a draft GitHub release to be checked before it
+goes public.
+
+| Artifact | Contents |
+|----------|----------|
+| `.tar.gz` (Linux, macOS) | `iotopenctl`, completions, README, LICENSE |
+| `.zip` (Windows) | `iotopenctl.exe` and `lynxctl.exe` (a copy), completions, README, LICENSE |
+| `.deb`, `.rpm`, `.apk` | `/usr/bin/iotopenctl`, `/usr/bin/lynxctl` as a symlink, completions for bash, zsh and fish under both names |
+| Scoop manifest | Both executables on `PATH` |
+| winget manifest | Portable zip with both executables |
+
+- Builds cover Linux, Windows and macOS on amd64 and arm64, statically
+  linked (`CGO_ENABLED=0`), with the version set from the tag.
+- The Scoop and winget manifests are generated but not uploaded until the
+  bucket repository and a winget-pkgs fork exist (`skip_upload`).
+- CI runs `gofmt`, `go vet` and the tests with the race detector on Linux,
+  Windows and macOS.
+
+## License
+
+GPL-3.0-or-later. Every source file starts with an SPDX identifier.
 
 ## Project layout
 
@@ -460,8 +493,8 @@ docs/                  design and user documentation
    - `--meta` and `--type` filters
    - reference resolution
 3. **Values (done):** `get`, `set`, `watch`, `log`.
-4. **Polish:** dynamic completion, GoReleaser packaging (including the
-   `lynxctl` alias), and installation through scoop and winget.
+4. **Polish (done):** dynamic completion, GoReleaser packaging (including
+   the `lynxctl` alias), and manifests for scoop and winget.
 5. **More resources:** schedule, file, search, edge-app, notification.
 6. **Admin:** organization, user, role, permissions.
 

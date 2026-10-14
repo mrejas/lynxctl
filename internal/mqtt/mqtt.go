@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package mqtt subscribes to topics on an IoT Open MQTT broker.
 package mqtt
 

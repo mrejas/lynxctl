@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package cli implements the iotopenctl commands.
 package cli
 
@@ -39,6 +41,8 @@ type App struct {
 	HTTPClient *http.Client
 	// RunEditor replaces launching $EDITOR (used by tests).
 	RunEditor func(path string) error
+	// CacheDir overrides where completion lists are cached (used by tests).
+	CacheDir string
 	// Subscribe replaces the MQTT connection of watch (used by tests).
 	Subscribe subscribeFunc
 

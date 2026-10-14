@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package config handles profiles, the configuration file and credential
 // storage.
 package config

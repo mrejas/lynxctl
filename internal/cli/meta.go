@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package cli
 
 import (
@@ -75,13 +77,6 @@ func (t metaTarget) minArgs(n int) cobra.PositionalArgs {
 	return usageArgs(cobra.MinimumNArgs(n))
 }
 
-func (t metaTarget) completeRef(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	if t.withRef && len(args) == 0 && t.complete != nil {
-		return t.complete(cmd, args, toComplete)
-	}
-	return nil, cobra.ShellCompDirectiveNoFileComp
-}
-
 func (a *App) newMetaGetCommand(t metaTarget) *cobra.Command {
 	maxArgs := 1
 	if t.withRef {
@@ -93,7 +88,7 @@ func (a *App) newMetaGetCommand(t metaTarget) *cobra.Command {
 		Long: `Without a key, all meta keys are listed. With a key, only its value is
 printed, which is handy in scripts.`,
 		Args:              usageArgs(cobra.RangeArgs(minIf(t.withRef), maxArgs)),
-		ValidArgsFunction: t.completeRef,
+		ValidArgsFunction: a.completeMeta(t, "get"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref, rest := t.split(args)
 			obj, err := t.load(cmd.Context(), ref)
@@ -162,7 +157,7 @@ func (a *App) newMetaSetCommand(t metaTarget) *cobra.Command {
 protected unless --protected=false is given.`,
 		Example:           fmt.Sprintf(`  %s %s meta set %sunit=°C format="%%.1f °C"`, a.Name, t.noun, t.exampleRef()),
 		Args:              t.minArgs(1),
-		ValidArgsFunction: t.completeRef,
+		ValidArgsFunction: a.completeMeta(t, "set"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref, rest := t.split(args)
 			pairs, err := parsePairs(rest, "meta key")
@@ -200,7 +195,7 @@ func (a *App) newMetaUnsetCommand(t metaTarget) *cobra.Command {
 		Aliases:           []string{"rm", "delete"},
 		Short:             "Remove meta keys",
 		Args:              t.minArgs(1),
-		ValidArgsFunction: t.completeRef,
+		ValidArgsFunction: a.completeMeta(t, "unset"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref, keys := t.split(args)
 			obj, err := t.load(cmd.Context(), ref)

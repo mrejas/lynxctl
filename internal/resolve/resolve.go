@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package resolve turns user supplied references (IDs or names) into objects.
 //
 // A reference is matched, case-insensitively, in this order:

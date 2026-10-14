@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package cli
 
 import (
@@ -153,6 +155,7 @@ func (a *App) newObjectListCommand(t objectType) *cobra.Command {
 	f := cmd.Flags()
 	f.StringArrayVar(&opts.meta, "meta", nil, "only show objects whose meta `key=value` matches (* is a wildcard; repeatable)")
 	f.StringVar(&opts.typ, "type", "", "only show objects of this type")
+	_ = cmd.RegisterFlagCompletionFunc("type", a.completeTypes(t))
 	if t.kind == api.FunctionX {
 		f.StringVar(&opts.device, "device", "", "only show functions of this device (ID or name)")
 		_ = cmd.RegisterFlagCompletionFunc("device", a.completeObjects(deviceType))
@@ -297,6 +300,7 @@ applied on top of the file. The file has the same layout as "%[1]s edit":
 	f := cmd.Flags()
 	f.StringVarP(&opts.file, "file", "f", "", `YAML or JSON file to create from ("-" for stdin)`)
 	f.StringVar(&opts.typ, "type", "", "type (required unless given in the file)")
+	_ = cmd.RegisterFlagCompletionFunc("type", a.completeTypes(t))
 	f.StringVar(&opts.name, "name", "", `name (sets the "name" meta key)`)
 	f.StringArrayVar(&opts.meta, "meta", nil, "set a meta `key=value` (repeatable)")
 	if t.kind == api.FunctionX {
@@ -474,39 +478,4 @@ func (a *App) newObjectDeleteCommand(t objectType) *cobra.Command {
 		cmd.Flags().BoolVar(&cascade, "cascade", false, "also delete the functions of the device")
 	}
 	return cmd
-}
-
-// completeObjects completes device or function names in the current
-// installation.
-func (a *App) completeObjects(t objectType) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-	return func(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		sc, err := a.scope(cmd.Context())
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
-		}
-		list, err := sc.Client.ListObjects(cmd.Context(), t.kind, sc.installation, nil)
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
-		}
-		var out []string
-		for _, o := range list {
-			if name := o.Name(); name != "" {
-				out = append(out, fmt.Sprintf("%s\tID %d, %s", name, o.ID, o.Type))
-			} else {
-				out = append(out, fmt.Sprintf("%d\t%s", o.ID, o.Type))
-			}
-		}
-		return out, cobra.ShellCompDirectiveNoFileComp
-	}
-}
-
-// completeObjectArg completes the first positional argument only.
-func (a *App) completeObjectArg(t objectType) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-	complete := a.completeObjects(t)
-	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		if len(args) > 0 {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		return complete(cmd, args, toComplete)
-	}
 }

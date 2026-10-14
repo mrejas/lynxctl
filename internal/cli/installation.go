@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package cli
 
 import (
@@ -139,13 +141,6 @@ func (a *App) newInstallationListCommand() *cobra.Command {
 func firstLine(s string) string {
 	line, _, _ := strings.Cut(s, "\n")
 	return line
-}
-
-func (a *App) completeInstallationArg(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	if len(args) > 0 {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	return a.completeInstallations(cmd, args, toComplete)
 }
 
 func (a *App) newInstallationGetCommand() *cobra.Command {

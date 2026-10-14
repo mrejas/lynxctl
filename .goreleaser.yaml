@@ -1,0 +1,165 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Release configuration. A release is made by pushing a tag (v1.2.3); see
+# .github/workflows/release.yml. Try it locally without publishing:
+#
+#   goreleaser release --snapshot --clean
+#
+# The program is shipped as iotopenctl and, for those who still call the
+# platform Lynx, as lynxctl. It takes its name from how it is invoked, so
+# the alias is a symlink in Linux packages and a copy on Windows, where
+# symlinks need elevated rights.
+
+version: 2
+
+project_name: iotopenctl
+
+before:
+  hooks:
+    - go mod tidy
+    - sh scripts/completions.sh
+
+builds:
+  - id: iotopenctl
+    main: ./cmd/iotopenctl
+    binary: iotopenctl
+    env: [CGO_ENABLED=0]
+    goos: [linux, windows, darwin]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{ .Version }}"]
+
+  # Windows-only copy under the Lynx name.
+  - id: lynxctl
+    main: ./cmd/iotopenctl
+    binary: lynxctl
+    env: [CGO_ENABLED=0]
+    goos: [windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{ .Version }}"]
+
+archives:
+  - id: default
+    ids: [iotopenctl, lynxctl]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+      - completions/*
+
+nfpms:
+  - id: packages
+    ids: [iotopenctl]
+    package_name: iotopenctl
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: IoT Open
+    homepage: https://github.com/mrejas/lynx-cli
+    maintainer: Marcus Rejås
+    description: Command line interface for the IoT Open platform (formerly Lynx).
+    license: GPL-3.0-or-later
+    formats: [deb, rpm, apk]
+    bindir: /usr/bin
+    contents:
+      - src: /usr/bin/iotopenctl
+        dst: /usr/bin/lynxctl
+        type: symlink
+
+      - src: completions/iotopenctl.bash
+        dst: /usr/share/bash-completion/completions/iotopenctl
+      - src: completions/lynxctl.bash
+        dst: /usr/share/bash-completion/completions/lynxctl
+
+      # Debian looks for zsh completions in vendor-completions, other
+      # distributions in site-functions.
+      - src: completions/_iotopenctl
+        dst: /usr/share/zsh/vendor-completions/_iotopenctl
+        packager: deb
+      - src: completions/_lynxctl
+        dst: /usr/share/zsh/vendor-completions/_lynxctl
+        packager: deb
+      - src: completions/_iotopenctl
+        dst: /usr/share/zsh/site-functions/_iotopenctl
+        packager: rpm
+      - src: completions/_lynxctl
+        dst: /usr/share/zsh/site-functions/_lynxctl
+        packager: rpm
+      - src: completions/_iotopenctl
+        dst: /usr/share/zsh/site-functions/_iotopenctl
+        packager: apk
+      - src: completions/_lynxctl
+        dst: /usr/share/zsh/site-functions/_lynxctl
+        packager: apk
+
+      - src: completions/iotopenctl.fish
+        dst: /usr/share/fish/vendor_completions.d/iotopenctl.fish
+      - src: completions/lynxctl.fish
+        dst: /usr/share/fish/vendor_completions.d/lynxctl.fish
+
+      - src: LICENSE
+        dst: /usr/share/doc/iotopenctl/copyright
+        packager: deb
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: mrejas
+    name: lynx-cli
+  # Releases are created as drafts so they can be checked before they go
+  # public.
+  draft: true
+
+# Scoop and winget manifests are generated into dist/ but not uploaded.
+# To publish, create the bucket repository (and a fork of
+# microsoft/winget-pkgs), add the tokens as repository secrets and remove
+# skip_upload.
+scoops:
+  - ids: [default]
+    name: iotopenctl
+    homepage: https://github.com/mrejas/lynx-cli
+    description: Command line interface for the IoT Open platform (formerly Lynx).
+    license: GPL-3.0-or-later
+    repository:
+      owner: mrejas
+      name: scoop-bucket
+      token: "{{ .Env.SCOOP_BUCKET_TOKEN }}"
+    skip_upload: true
+
+winget:
+  - name: iotopenctl
+    ids: [default]
+    publisher: Marcus Rejås
+    package_identifier: MarcusRejas.iotopenctl
+    short_description: Command line interface for the IoT Open platform (formerly Lynx).
+    license: GPL-3.0-or-later
+    homepage: https://github.com/mrejas/lynx-cli
+    license_url: https://github.com/mrejas/lynx-cli/blob/main/LICENSE
+    tags: [iot, iotopen, lynx, cli]
+    repository:
+      owner: mrejas
+      name: winget-pkgs
+      branch: "iotopenctl-{{ .Version }}"
+      token: "{{ .Env.WINGET_TOKEN }}"
+      pull_request:
+        enabled: true
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master
+    skip_upload: true

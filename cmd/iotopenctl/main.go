@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Command iotopenctl is a command line interface for the IoT Open platform.
 // It is also shipped as lynxctl.
 package main

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package cli
 
 import (
@@ -45,6 +47,7 @@ func (e *testEnv) run(stdin string, args ...string) result {
 		Err:       &stderr,
 		ConfigDir: e.dir,
 		Secrets:   e.secrets,
+		CacheDir:  filepath.Join(e.dir, "cache"),
 		RunEditor: e.editor,
 		Subscribe: e.subscribe,
 	}
