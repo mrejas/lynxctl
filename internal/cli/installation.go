@@ -134,7 +134,7 @@ func (a *App) newInstallationListCommand() *cobra.Command {
 			return pr.List(list, rows)
 		},
 	}
-	cmd.Flags().StringArrayVar(&meta, "meta", nil, "only show installations whose meta `key=value` matches (* is a wildcard; repeatable)")
+	cmd.Flags().StringArrayVar(&meta, "meta", nil, metaFilterHelp)
 	return cmd
 }
 

@@ -74,14 +74,20 @@ was **verified** against the server or is **from the docs only**.
     `device_id` and the keys used by each function type (it refers to a
     separate page). *Docs only.*
 
+17. **Meta filter semantics.** List endpoints accept `{metadata-key}=value`
+    with `*` wildcards, but it is not documented whether matching is
+    case-sensitive, whether `*` matches `/` (relevant for topics), or
+    whether `key=*` matches only objects that have the key. iotopenctl
+    sends `key=*` for `--meta key` and assumes the latter. *Docs only.*
+
 ### Installations
 
-17. **`protected_meta` asymmetry.** The installation request schema has
+18. **`protected_meta` asymmetry.** The installation request schema has
     `protected_meta`, the response schema does not. *Docs only.*
 
 ### Search
 
-18. **Different conventions from the rest of the API.** The search response
+19. **Different conventions from the rest of the API.** The search response
     uses camelCase (`clientID`, `installationID`, `organizationID`,
     `metaMatches`) where everything else uses snake_case, returns `clientID`
     as a string where it is a number elsewhere, filters metadata with
@@ -90,51 +96,51 @@ was **verified** against the server or is **from the docs only**.
 
 ### Schedules
 
-19. **The `Schedule` schema is missing** from the Schemas section; the
+20. **The `Schedule` schema is missing** from the Schemas section; the
     fields can only be read from examples. *Docs only.*
-20. **Timestamp types differ:** `created_at` is an integer, `updated_at` a
+21. **Timestamp types differ:** `created_at` is an integer, `updated_at` a
     string (described as a Unix timestamp). *Docs only.*
-21. **0-indexed months?** `month` is described as 0-indexed, unlike cron
+22. **0-indexed months?** `month` is described as 0-indexed, unlike cron
     (1–12), and `day_of_week` as 0-indexed with Sunday as both 0 and 7.
     Please confirm, and say whether ranges (`1-5`) and steps (`*/15`) are
     supported or only comma lists. *Docs only.*
-22. **`POST /api/v2/schedule/{installation_id}` documents no response
+23. **`POST /api/v2/schedule/{installation_id}` documents no response
     body**, unlike other create endpoints. *Docs only.*
 
 ### Organizations, users and tokens
 
-23. **Organization examples are inconsistent:** `children[].name` is `0` (a
+24. **Organization examples are inconsistent:** `children[].name` is `0` (a
     number); `PUT /api/v2/organization/{id}` lists no body; the PUT response
     example has a numeric `zip` and lacks `protected_meta` and
     `password_valid_days`; the `minimal=true` response is not shown.
     *Docs only.*
-24. **Token value in lists.** The `token` field is documented as "only
+25. **Token value in lists.** The `token` field is documented as "only
     available when creating a new token", but the list example includes a
     token value. The `CreateToken` schema is missing from the Schemas
     section. *Docs only.*
-25. **Password change body** is typed as a plain object; the fields
+26. **Password change body** is typed as a plain object; the fields
     (`current_password`, `new_password`) only appear in the example, and it
     is not stated whether `current_password` is required when changing
     another user's password. *Docs only.*
 
 ### Edge apps, notifications and files
 
-26. **Edge app updates go to the collection.** `PUT /api/v2/edge/app`
+27. **Edge app updates go to the collection.** `PUT /api/v2/edge/app`
     (with the ID in the body) differs from all other resources, which use
     `PUT .../{id}`. There is no endpoint for deleting an app. *Docs only.*
-27. **`configure` response.** `GET /api/v2/edge/app/{app_id}/configure`
+28. **`configure` response.** `GET /api/v2/edge/app/{app_id}/configure`
     documents the response as "None" although it returns app.json.
     *Docs only.*
-28. **`version` parameter of download/configure.** Is it the version name
+29. **`version` parameter of download/configure.** Is it the version name
     (`1.2.0`) or the hash? iotopenctl sends the name. *Docs only.*
-29. **Notification send body.** `POST .../output/{output_id}/send` has no
+30. **Notification send body.** `POST .../output/{output_id}/send` has no
     body schema; only the description says a JSON object becomes available
     to templates. *Docs only.*
-30. **File upload field.** `POST /api/v2/file/...` types the `filename`
+31. **File upload field.** `POST /api/v2/file/...` types the `filename`
     multipart field as an array of strings, while `PUT` types it as binary.
     The download endpoint says the format can be chosen with `Accept` but
     not which formats exist. *Docs only.*
-31. **Delete messages vary in case:** `"Deleted"` for most resources,
+32. **Delete messages vary in case:** `"Deleted"` for most resources,
     `"deleted"` for schedules and edge app instances. *Docs only.*
 
 ## Suggestions

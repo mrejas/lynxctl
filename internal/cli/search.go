@@ -56,7 +56,7 @@ everything matching the filters is listed.`,
 			if len(selected) > 0 {
 				q.Set("types", strings.Join(selected, ","))
 			}
-			pairs, err := parsePairs(meta, "--meta filter")
+			pairs, err := metaPairs(meta)
 			if err != nil {
 				return err
 			}
@@ -105,7 +105,7 @@ everything matching the filters is listed.`,
 	}
 	f := cmd.Flags()
 	f.StringArrayVar(&types, "type", nil, "only find these types: installation, device, function (repeatable or comma-separated)")
-	f.StringArrayVar(&meta, "meta", nil, "only find objects whose meta `key=value` matches (* is a wildcard; repeatable)")
+	f.StringArrayVar(&meta, "meta", nil, "only find objects whose meta `key=value` matches; * is a wildcard (repeatable)")
 	f.IntVar(&limit, "limit", 0, "maximum number of results (default and maximum: 10000)")
 	_ = cmd.RegisterFlagCompletionFunc("type", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 		return searchTypes, cobra.ShellCompDirectiveNoFileComp

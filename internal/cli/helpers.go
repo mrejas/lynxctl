@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -31,9 +32,58 @@ func parsePairs(pairs []string, what string) ([][2]string, error) {
 	return out, nil
 }
 
+// metaPairs parses --meta filters. A key without "=value" means the key
+// must exist, with any value.
+func metaPairs(flags []string) ([][2]string, error) {
+	out := make([][2]string, 0, len(flags))
+	for _, f := range flags {
+		if !strings.Contains(f, "=") {
+			if strings.TrimSpace(f) == "" {
+				return nil, usageErrorf("empty --meta filter")
+			}
+			out = append(out, [2]string{strings.TrimSpace(f), "*"})
+			continue
+		}
+		pair, err := parsePairs([]string{f}, "--meta filter")
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, pair[0])
+	}
+	return out, nil
+}
+
+// globMatch reports whether s matches pattern, where * matches any text
+// (including "/"). Matching ignores case.
+func globMatch(pattern, s string) bool {
+	re := "(?is)^" + strings.ReplaceAll(regexp.QuoteMeta(pattern), `\*`, ".*") + "$"
+	ok, _ := regexp.MatchString(re, s)
+	return ok
+}
+
+// metaMatches applies --meta filters locally, for lists the API cannot
+// filter. Protected meta keys count as well.
+func metaMatches(pairs [][2]string, metas ...api.Meta) bool {
+	for _, p := range pairs {
+		found := false
+		for _, m := range metas {
+			if v, ok := m[p[0]]; ok && globMatch(p[1], v) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+const metaFilterHelp = "only show those whose meta `key=value` matches; * is a wildcard, a key alone means it is set (repeatable)"
+
 // metaFilter builds the query for list endpoints from --meta and --type.
 func metaFilter(metaFlags []string, typ string) (url.Values, error) {
-	pairs, err := parsePairs(metaFlags, "--meta filter")
+	pairs, err := metaPairs(metaFlags)
 	if err != nil {
 		return nil, err
 	}

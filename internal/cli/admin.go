@@ -79,8 +79,20 @@ func (a *App) organizationResource() *resource {
 				return strconv.Itoa(len(c))
 			}},
 		},
-		readOnly:      []string{"id", "children"},
-		required:      []string{"name"},
+		readOnly: []string{"id", "children"},
+		required: []string{"name"},
+		// The API cannot filter organizations by meta, so it is done here.
+		localFilter: func(cmd *cobra.Command) func(api.JSONObject) (bool, error) {
+			var meta []string
+			cmd.Flags().StringArrayVar(&meta, "meta", nil, metaFilterHelp)
+			return func(o api.JSONObject) (bool, error) {
+				pairs, err := metaPairs(meta)
+				if err != nil {
+					return false, err
+				}
+				return metaMatches(pairs, toMeta(o["meta"]), toMeta(o["protected_meta"])), nil
+			}
+		},
 		createExample: fmt.Sprintf(`  %[1]s organization create --name "ACME Stockholm" --parent ACME --email info@acme.example`, a.Name),
 	}
 	r.createFlags = func(cmd *cobra.Command) func(context.Context, api.JSONObject) error {
@@ -292,7 +304,7 @@ func (a *App) userResource() *resource {
 			var org int64
 			var meta []string
 			cmd.Flags().Int64Var(&org, "org", 0, "only show users of this organization")
-			cmd.Flags().StringArrayVar(&meta, "meta", nil, "only show users whose meta `key=value` matches (* is a wildcard; repeatable)")
+			cmd.Flags().StringArrayVar(&meta, "meta", nil, metaFilterHelp)
 			return func() (url.Values, error) {
 				q, err := metaFilter(meta, "")
 				if err != nil {

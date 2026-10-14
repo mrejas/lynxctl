@@ -311,6 +311,11 @@ Presentation:
   shown. The name column is left out when only one function is shown.
 - `watch` prints one line per value. With `-o json` it prints one JSON
   object per line. `--count N` stops after N values.
+- `get`, `log` and `watch` select functions by name, by `--meta` and
+  `--type` (both with `*` wildcards), or both; duplicates are removed.
+  `iotopenctl get --meta device_id=12` shows all values of a device.
+  A selection that matches no function with a `topic_read` is an error
+  (exit code 3).
 - `get` without arguments lists all functions that have a `topic_read`.
   Naming a function without one is an error, and so is `set` on a function
   without a `topic_write`.
@@ -348,7 +353,11 @@ iotopenctl installation meta set customer=ACME         # current installation, o
 ```
 
 - `--meta key=value` can be repeated, and values may contain `*` wildcards.
-  This maps directly to the API's metadata filters.
+  A key alone (`--meta pinned`) means the key is set, with any value
+  (`pinned=*`). For installations, devices, functions and users this maps
+  directly to the API's metadata filters. Organizations cannot be filtered
+  by the API, so `organization list --meta` filters locally: case-insensitive,
+  with `*` matching any text, protected keys included.
 - `meta set` uses `PUT .../meta/{key}?create_missing=true`, so setting a key
   works whether or not it already exists.
 - `edit` downloads the object and opens it as YAML in `$VISUAL`, then

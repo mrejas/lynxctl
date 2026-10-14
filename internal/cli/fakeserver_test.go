@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path"
 	"slices"
 	"sort"
 	"strconv"
@@ -111,7 +110,7 @@ func newFakeServer(t *testing.T) *fakeServer {
 	mux.HandleFunc("GET /api/v2/installation", f.authed(func(w http.ResponseWriter, r *http.Request) {
 		list := []*api.Installation{}
 		for _, inst := range f.sortedInstallations() {
-			if metaMatches(inst.Meta, r.URL.Query()) {
+			if fakeMetaMatches(inst.Meta, r.URL.Query()) {
 				list = append(list, inst)
 			}
 		}
@@ -169,7 +168,7 @@ func newFakeServer(t *testing.T) *fakeServer {
 				if o.InstallationID != inst || (q.Get("type") != "" && q.Get("type") != o.Type) {
 					continue
 				}
-				if metaMatches(o.Meta, q) {
+				if fakeMetaMatches(o.Meta, q) {
 					list = append(list, o)
 				}
 			}
@@ -399,15 +398,16 @@ func (f *fakeServer) authed(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// metaMatches applies the API's meta filters: every query parameter except
-// "type" must match the meta key of the same name; * is a wildcard.
-func metaMatches(meta api.Meta, q map[string][]string) bool {
+// fakeMetaMatches applies the API's meta filters: every query parameter
+// except "type" must match the meta key of the same name; * is a wildcard.
+func fakeMetaMatches(meta api.Meta, q map[string][]string) bool {
 	for key, values := range q {
 		if key == "type" {
 			continue
 		}
+		v, ok := meta[key]
 		for _, want := range values {
-			if ok, _ := path.Match(want, meta[key]); !ok {
+			if !ok || !globMatch(want, v) {
 				return false
 			}
 		}

@@ -44,6 +44,9 @@ type resource struct {
 	// listFlags registers filter flags on the list command and returns a
 	// function giving the query to send.
 	listFlags func(cmd *cobra.Command) func() (url.Values, error)
+	// localFilter registers flags for filtering that the API cannot do, and
+	// returns a predicate applied to the listed objects.
+	localFilter func(cmd *cobra.Command) func(api.JSONObject) (bool, error)
 	// self is a reference the API resolves itself, such as "me" for users.
 	self string
 	// defaultRef, if set, makes the argument of get optional.
@@ -249,6 +252,10 @@ func (a *App) newResourceListCommand(r *resource) *cobra.Command {
 	if r.listFlags != nil {
 		query = r.listFlags(cmd)
 	}
+	var keep func(api.JSONObject) (bool, error)
+	if r.localFilter != nil {
+		keep = r.localFilter(cmd)
+	}
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		pr, err := a.printer()
 		if err != nil {
@@ -263,6 +270,19 @@ func (a *App) newResourceListCommand(r *resource) *cobra.Command {
 		list, _, _, err := a.listResource(cmd.Context(), r, q)
 		if err != nil {
 			return err
+		}
+		if keep != nil {
+			kept := []api.JSONObject{}
+			for _, o := range list {
+				ok, err := keep(o)
+				if err != nil {
+					return err
+				}
+				if ok {
+					kept = append(kept, o)
+				}
+			}
+			list = kept
 		}
 		return pr.List(list, r.rows(list))
 	}

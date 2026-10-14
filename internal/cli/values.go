@@ -5,6 +5,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -107,9 +108,31 @@ type valueSource struct {
 	all bool
 }
 
-// valueSource resolves function references and raw topics. Functions
-// without a topic_read meta key are an error when named explicitly.
-func (a *App) valueSource(ctx context.Context, refs, topics []string) (*valueSource, error) {
+// selection picks functions by type and meta instead of by name.
+type selection struct {
+	meta []string
+	typ  string
+}
+
+func (a *App) addSelectionFlags(cmd *cobra.Command, sel *selection) {
+	f := cmd.Flags()
+	f.StringArrayVar(&sel.meta, "meta", nil, "select functions whose meta `key=value` matches; * is a wildcard, a key alone means it is set (repeatable)")
+	f.StringVar(&sel.typ, "type", "", "select functions of this type (* is a wildcard)")
+	_ = cmd.RegisterFlagCompletionFunc("type", a.completeTypes(functionType))
+}
+
+func (sel selection) active() bool {
+	return len(sel.meta) > 0 || sel.typ != ""
+}
+
+// valueSource resolves function references, raw topics and selections.
+// Functions without a topic_read meta key are an error when named
+// explicitly, and skipped when selected.
+func (a *App) valueSource(ctx context.Context, refs, topics []string, sel selection) (*valueSource, error) {
+	pairs, err := metaPairs(sel.meta)
+	if err != nil {
+		return nil, err
+	}
 	sc, err := a.scope(ctx)
 	if err != nil {
 		return nil, err
@@ -145,7 +168,29 @@ func (a *App) valueSource(ctx context.Context, refs, topics []string) (*valueSou
 		full := fullTopic(cid, t)
 		src.targets = append(src.targets, target{fn: src.byTopic[full], topic: full})
 	}
-	src.all = len(refs) == 0 && len(topics) == 0
+	if sel.active() {
+		seen := map[string]bool{}
+		for _, t := range src.targets {
+			seen[t.topic] = true
+		}
+		matched := 0
+		for i := range fns {
+			fn := &fns[i]
+			t := fn.Meta["topic_read"]
+			if t == "" || (sel.typ != "" && !globMatch(sel.typ, fn.Type)) || !metaMatches(pairs, fn.Meta, fn.ProtectedMeta) {
+				continue
+			}
+			matched++
+			if full := fullTopic(cid, t); !seen[full] {
+				seen[full] = true
+				src.targets = append(src.targets, target{fn: fn, topic: full})
+			}
+		}
+		if matched == 0 {
+			return nil, &exitError{code: ExitNotFound, err: errors.New("no function with a topic_read meta key matches --meta and --type")}
+		}
+	}
+	src.all = len(refs) == 0 && len(topics) == 0 && !sel.active()
 	if src.all {
 		for i := range fns {
 			if t := fns[i].Meta["topic_read"]; t != "" {
@@ -171,6 +216,7 @@ func (src *valueSource) targetFor(topic string) target {
 
 func (a *App) newGetCommand() *cobra.Command {
 	var topics []string
+	var sel selection
 	cmd := &cobra.Command{
 		Use:   "get [function]...",
 		Short: "Show the latest value of functions",
@@ -183,6 +229,8 @@ only the raw values, one per line.`,
 		Example: fmt.Sprintf(`  %[1]s get                          # all functions
   %[1]s get kitchen "hall temp"
   %[1]s get kitchen -q               # just the number, for scripts
+  %[1]s get --meta device_id=12      # all functions of a device
+  %[1]s get --type 'temp*'
   %[1]s get --topic obj/zwave/12/temperature`, a.Name),
 		ValidArgsFunction: a.completeObjects(functionType),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -191,7 +239,7 @@ only the raw values, one per line.`,
 			if err != nil {
 				return err
 			}
-			src, err := a.valueSource(ctx, args, topics)
+			src, err := a.valueSource(ctx, args, topics, sel)
 			if err != nil {
 				return err
 			}
@@ -228,6 +276,7 @@ only the raw values, one per line.`,
 		},
 	}
 	cmd.Flags().StringArrayVar(&topics, "topic", nil, "read a topic directly (relative to the installation; repeatable)")
+	a.addSelectionFlags(cmd, &sel)
 	return cmd
 }
 
@@ -302,6 +351,7 @@ var (
 )
 
 type logOptions struct {
+	sel      selection
 	topics   []string
 	since    string
 	from, to string
@@ -334,6 +384,7 @@ server from the time range).`,
 	}
 	f := cmd.Flags()
 	f.StringArrayVar(&opts.topics, "topic", nil, "read a topic directly (relative to the installation; repeatable)")
+	a.addSelectionFlags(cmd, &opts.sel)
 	f.StringVar(&opts.since, "since", "", "show values from this long ago until now (e.g. 2h, 7d)")
 	f.StringVar(&opts.from, "from", "", "start time")
 	f.StringVar(&opts.to, "to", "", "end time (default: now)")
@@ -388,7 +439,7 @@ func (a *App) showLog(ctx context.Context, refs []string, opts logOptions) error
 		return usageErrorf("--limit must be positive")
 	}
 
-	src, err := a.valueSource(ctx, refs, opts.topics)
+	src, err := a.valueSource(ctx, refs, opts.topics, opts.sel)
 	if err != nil {
 		return err
 	}
@@ -437,6 +488,7 @@ type subscribeFunc func(ctx context.Context, opts mqtt.Options, topics []string,
 
 func (a *App) newWatchCommand() *cobra.Command {
 	var topics []string
+	var sel selection
 	var count int
 	var broker string
 	cmd := &cobra.Command{
@@ -454,24 +506,26 @@ With -o json, each value is printed as one JSON object per line.`,
 		Example: fmt.Sprintf(`  %[1]s watch
   %[1]s watch kitchen "hall temp"
   %[1]s watch --topic 'obj/zwave/#'
+  %[1]s watch --meta pinned          # all pinned functions
   %[1]s watch kitchen --count 1 -q   # wait for the next value and print it`, a.Name),
 		ValidArgsFunction: a.completeObjects(functionType),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.watch(cmd.Context(), args, topics, count, broker)
+			return a.watch(cmd.Context(), args, topics, sel, count, broker)
 		},
 	}
 	f := cmd.Flags()
 	f.StringArrayVar(&topics, "topic", nil, "watch a topic (relative to the installation, wildcards allowed; repeatable)")
+	a.addSelectionFlags(cmd, &sel)
 	f.IntVar(&count, "count", 0, "stop after this many values")
 	f.StringVar(&broker, "broker", "", "MQTT broker as host[:port], or a URL such as tcp://localhost:1883")
 	return cmd
 }
 
-func (a *App) watch(ctx context.Context, refs, topics []string, count int, broker string) error {
+func (a *App) watch(ctx context.Context, refs, topics []string, sel selection, count int, broker string) error {
 	if a.outputFlag != "" && a.outputFlag != string(output.Table) && a.outputFlag != string(output.JSON) {
 		return usageErrorf("watch supports only -o table and -o json")
 	}
-	src, err := a.valueSource(ctx, refs, topics)
+	src, err := a.valueSource(ctx, refs, topics, sel)
 	if err != nil {
 		return err
 	}

@@ -146,6 +146,7 @@ func (a *App) newObjectListCommand(t objectType) *cobra.Command {
 		Example: fmt.Sprintf(`  %[1]s %[2]s list
   %[1]s %[2]s list --type temperature
   %[1]s %[2]s list --meta name='Kitchen*'
+  %[1]s %[2]s list --meta pinned        # has the key, any value
   %[1]s %[2]s list -q            # IDs only, for scripts`, a.Name, t.noun),
 		Args: usageArgs(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -153,7 +154,7 @@ func (a *App) newObjectListCommand(t objectType) *cobra.Command {
 		},
 	}
 	f := cmd.Flags()
-	f.StringArrayVar(&opts.meta, "meta", nil, "only show objects whose meta `key=value` matches (* is a wildcard; repeatable)")
+	f.StringArrayVar(&opts.meta, "meta", nil, metaFilterHelp)
 	f.StringVar(&opts.typ, "type", "", "only show objects of this type")
 	_ = cmd.RegisterFlagCompletionFunc("type", a.completeTypes(t))
 	if t.kind == api.FunctionX {
