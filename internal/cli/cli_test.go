@@ -2,116 +2,20 @@ package cli
 
 import (
 	"encoding/json"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/mrejas/lynx-cli/internal/config"
 )
-
-// fakeServer is a minimal stand-in for the IoT Open API.
-type fakeServer struct {
-	*httptest.Server
-
-	mu         sync.Mutex
-	validKeys  map[string]bool
-	loggedOut  []string
-	lastPath   string
-	lastQuery  string
-	lastMethod string
-	lastBody   string
-}
-
-func newFakeServer(t *testing.T) *fakeServer {
-	f := &fakeServer{validKeys: map[string]bool{"api-key-1": true}}
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/v2/auth", func(w http.ResponseWriter, r *http.Request) {
-		user, pass, _ := r.BasicAuth()
-		switch {
-		case user == "jane@example.com" && pass == "secret":
-			f.issue(w, "token-jane", "")
-		case user == "twofa@example.com" && pass == "secret":
-			f.issue(w, "token-challenge", "smslogin")
-		default:
-			unauthorized(w)
-		}
-	})
-	mux.HandleFunc("PUT /api/v2/auth", func(w http.ResponseWriter, r *http.Request) {
-		var body struct{ Challenge string }
-		json.NewDecoder(r.Body).Decode(&body)
-		if r.Header.Get("X-API-Key") != "token-challenge" || body.Challenge != "123456" {
-			unauthorized(w)
-			return
-		}
-		f.issue(w, "token-2fa", "")
-	})
-	mux.HandleFunc("DELETE /api/v2/auth", func(w http.ResponseWriter, r *http.Request) {
-		f.mu.Lock()
-		defer f.mu.Unlock()
-		key := r.Header.Get("X-API-Key")
-		f.loggedOut = append(f.loggedOut, key)
-		delete(f.validKeys, key)
-	})
-	mux.HandleFunc("GET /api/v2/user/me", f.authed(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"id":7,"email":"jane@example.com","first_name":"Jane","last_name":"Doe","role":1,"organisations":[2]}`))
-	}))
-	mux.HandleFunc("GET /api/v2/installationinfo", f.authed(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[
-			{"id":10,"name":"Main Street 1","client_id":1010,"organization_id":2},
-			{"id":11,"name":"Main Street 2","client_id":1011,"organization_id":2},
-			{"id":12,"name":"Summer house","client_id":1012,"organization_id":2}]`))
-	}))
-	mux.HandleFunc("/api/v2/functionx/", f.authed(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		f.mu.Lock()
-		f.lastMethod, f.lastPath, f.lastQuery, f.lastBody = r.Method, r.URL.Path, r.URL.RawQuery, string(body)
-		f.mu.Unlock()
-		w.Write([]byte(`[{"id":1042,"type":"switch"}]`))
-	}))
-	f.Server = httptest.NewServer(mux)
-	t.Cleanup(f.Close)
-	return f
-}
-
-// host is the profile name a login to this server gets by default.
-func (f *fakeServer) host() string {
-	return strings.TrimPrefix(f.URL, "http://")
-}
-
-func (f *fakeServer) issue(w http.ResponseWriter, token, nextStep string) {
-	f.mu.Lock()
-	f.validKeys[token] = true
-	f.mu.Unlock()
-	json.NewEncoder(w).Encode(map[string]string{"token": token, "nextstep": nextStep})
-}
-
-func (f *fakeServer) authed(h http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		f.mu.Lock()
-		ok := f.validKeys[r.Header.Get("X-API-Key")]
-		f.mu.Unlock()
-		if !ok {
-			unauthorized(w)
-			return
-		}
-		h(w, r)
-	}
-}
-
-func unauthorized(w http.ResponseWriter) {
-	w.WriteHeader(http.StatusUnauthorized)
-	w.Write([]byte(`{"message":"Unauthorized"}`))
-}
 
 // testEnv runs commands against a temporary config dir and file secret store.
 type testEnv struct {
 	t       *testing.T
 	dir     string
 	secrets *config.FileStore
+	// editor, if set, is run instead of $EDITOR.
+	editor func(path string) error
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -139,6 +43,7 @@ func (e *testEnv) run(stdin string, args ...string) result {
 		Err:       &stderr,
 		ConfigDir: e.dir,
 		Secrets:   e.secrets,
+		RunEditor: e.editor,
 	}
 	code := app.Run(args)
 	return result{stdout.String(), stderr.String(), code}
@@ -338,13 +243,13 @@ func TestAPICommand(t *testing.T) {
 	env := newTestEnv(t)
 	env.login(srv)
 
-	if r := env.run("", "api", "functionx/{installation}"); r.code != ExitError || !strings.Contains(r.stderr, "no installation selected") {
+	if r := env.run("", "api", "echo/{installation}"); r.code != ExitError || !strings.Contains(r.stderr, "no installation selected") {
 		t.Errorf("without installation: exit %d, stderr %s", r.code, r.stderr)
 	}
 
 	env.mustRun("", "use", "summer")
-	r := env.mustRun("", "api", "functionx/{installation}?type=switch")
-	if srv.lastMethod != "GET" || srv.lastPath != "/api/v2/functionx/12" || srv.lastQuery != "type=switch" {
+	r := env.mustRun("", "api", "echo/{installation}?type=switch")
+	if srv.lastMethod != "GET" || srv.lastPath != "/api/v2/echo/12" || srv.lastQuery != "type=switch" {
 		t.Errorf("request: %s %s?%s", srv.lastMethod, srv.lastPath, srv.lastQuery)
 	}
 	if r.stdout != `[{"id":1042,"type":"switch"}]` {
@@ -352,8 +257,8 @@ func TestAPICommand(t *testing.T) {
 	}
 
 	// -i overrides the current installation, and fields imply POST.
-	env.mustRun("", "api", "-i", "main street 1", "/api/v2/functionx/{installation}", "-F", "meta.unit=°C", "-F", "count=3", "--raw-field", "code=007")
-	if srv.lastMethod != "POST" || srv.lastPath != "/api/v2/functionx/10" {
+	env.mustRun("", "api", "-i", "main street 1", "/api/v2/echo/{installation}", "-F", "meta.unit=°C", "-F", "count=3", "--raw-field", "code=007")
+	if srv.lastMethod != "POST" || srv.lastPath != "/api/v2/echo/10" {
 		t.Errorf("request: %s %s", srv.lastMethod, srv.lastPath)
 	}
 	var body map[string]any
@@ -364,7 +269,7 @@ func TestAPICommand(t *testing.T) {
 		t.Errorf("body = %v", body)
 	}
 
-	env.mustRun(`{"type":"dimmer"}`, "api", "PUT", "functionx/{installation}/1042", "-f", "-")
+	env.mustRun(`{"type":"dimmer"}`, "api", "PUT", "echo/{installation}/1042", "-f", "-")
 	if srv.lastMethod != "PUT" || srv.lastBody != `{"type":"dimmer"}` {
 		t.Errorf("request: %s %s", srv.lastMethod, srv.lastBody)
 	}

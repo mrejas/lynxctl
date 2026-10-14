@@ -37,6 +37,8 @@ type App struct {
 	ConfigDir  string
 	Secrets    config.SecretStore
 	HTTPClient *http.Client
+	// RunEditor replaces launching $EDITOR (used by tests).
+	RunEditor func(path string) error
 
 	// Global flags.
 	profileFlag      string
@@ -225,17 +227,17 @@ func (a *App) installation(ctx context.Context, s *session) (*config.Installatio
 	if id, err := strconv.ParseInt(ref, 10, 64); err == nil {
 		return &config.Installation{ID: id}, nil
 	}
-	return a.resolveInstallation(ctx, s, ref)
+	return a.resolveInstallation(ctx, s, ref, resolve.Options{})
 }
 
-func (a *App) resolveInstallation(ctx context.Context, s *session, ref string) (*config.Installation, error) {
+func (a *App) resolveInstallation(ctx context.Context, s *session, ref string, opts resolve.Options) (*config.Installation, error) {
 	list, err := s.Client.InstallationInfos(ctx)
 	if err != nil {
 		return nil, err
 	}
 	inst, err := resolve.Find("installation", ref, list, func(i api.InstallationInfo) resolve.Key {
 		return resolve.Key{ID: i.ID, AltID: i.ClientID, Name: i.Name}
-	}, resolve.Options{})
+	}, opts)
 	if err != nil {
 		return nil, err
 	}

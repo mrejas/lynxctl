@@ -15,6 +15,7 @@ import (
 
 	"github.com/mrejas/lynx-cli/internal/api"
 	"github.com/mrejas/lynx-cli/internal/output"
+	"github.com/mrejas/lynx-cli/internal/resolve"
 )
 
 var httpMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
@@ -197,7 +198,7 @@ func (a *App) expandPlaceholders(ctx context.Context, s *session, path string) (
 	}
 	if needsClientID && inst.ClientID == 0 {
 		// A numeric -i gives only the ID; look up the client ID.
-		if inst, err = a.resolveInstallation(ctx, s, fmt.Sprint(inst.ID)); err != nil {
+		if inst, err = a.resolveInstallation(ctx, s, fmt.Sprint(inst.ID), resolve.Options{}); err != nil {
 			return "", err
 		}
 	}

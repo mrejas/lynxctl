@@ -101,6 +101,9 @@ Get started:
 		a.newWhoamiCommand(),
 		a.newProfileCommand(),
 		a.newUseCommand(),
+		a.newInstallationCommand(),
+		a.newObjectCommand(deviceType),
+		a.newObjectCommand(functionType),
 		a.newAPICommand(),
 		a.newVersionCommand(),
 	)

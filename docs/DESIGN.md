@@ -218,8 +218,9 @@ Rules:
 - `delete` accepts only an exact ID or exact name, never a substring. If
   another object is added later, a substring in an old script could
   otherwise start matching it.
-- A name that looks like a number can be referenced with `--name <name>`.
-  For example, `--name 21` matches a function named "21" instead of ID 21.
+- A name that looks like a number is still found: if no object has that ID,
+  the reference is matched against names. Only when both an ID and a name
+  match does the ID win.
 
 ## Command overview
 
@@ -305,6 +306,11 @@ iotopenctl function meta unset "temp kök" format
 
 iotopenctl device functions "sensor hall"
 iotopenctl device delete 12 --cascade                  # also deletes the device's functions
+
+iotopenctl installation get                            # the current installation
+iotopenctl installation edit summer
+iotopenctl installation create --name "Main Street 1"  # --org defaults to your only organization
+iotopenctl installation meta set customer=ACME         # current installation, or -i
 ```
 
 - `--meta key=value` can be repeated, and values may contain `*` wildcards.
@@ -316,7 +322,23 @@ iotopenctl device delete 12 --cascade                  # also deletes the device
   Read-only fields are shown as comments. On save, the object is sent with
   `PUT`. If the file is invalid or the API rejects it, the editor is
   reopened with the error at the top. If nothing changed, nothing is sent.
-- `create` and `edit` accept JSON and YAML.
+- `edit` accepts only the editable fields (`type`, `meta`, `protected_meta`
+  for devices and functions; `name`, `organization_id`, `notes`, `users`,
+  `meta` for installations). Unknown fields are rejected, so typos do not
+  disappear silently. Saving without changes cancels; after an error, it
+  gives up and reports the error.
+- `create` and `edit` accept JSON and YAML. `create -f file` can be combined
+  with flags, which are applied on top of the file.
+- `meta get <object> <key>` prints only the value, for use in scripts.
+  `meta set` keeps a protected key protected unless `--protected=false` is
+  given.
+- Commands on installations default to the current installation; `meta`
+  for installations uses the current installation or `-i`, so its arguments
+  are always keys.
+- `device delete` without `--cascade` mentions how many functions still
+  refer to the device. Deleting the current installation also unselects it.
+- Lists are sorted by ID. The function list shows the device and the read
+  topic; `-o wide` adds the write topic and the update time.
 
 ### `api`: the escape hatch
 
@@ -408,7 +430,7 @@ docs/                  design and user documentation
 
 1. **Foundation (done):** project skeleton, profiles and config, `login` (including
    2FA), `logout`, `whoami`, `api`, `use`, and output formats.
-2. **Objects:**
+2. **Objects (done):**
    - `installation`, `device` and `function` with list, get, create, edit
      and delete
    - `meta`

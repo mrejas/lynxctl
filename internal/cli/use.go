@@ -7,6 +7,7 @@ import (
 
 	"github.com/mrejas/lynx-cli/internal/config"
 	"github.com/mrejas/lynx-cli/internal/output"
+	"github.com/mrejas/lynx-cli/internal/resolve"
 )
 
 func (a *App) newUseCommand() *cobra.Command {
@@ -53,7 +54,7 @@ func (a *App) useInstallation(cmd *cobra.Command, ref string) error {
 	if err != nil {
 		return err
 	}
-	inst, err := a.resolveInstallation(cmd.Context(), s, ref)
+	inst, err := a.resolveInstallation(cmd.Context(), s, ref, resolve.Options{})
 	if err != nil {
 		return err
 	}

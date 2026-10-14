@@ -21,6 +21,10 @@ ln -s iotopenctl lynxctl    # optional alias
 iotopenctl login                    # https://lynx.iotopen.se, prompts for password and 2FA code
 iotopenctl use "main street"        # select an installation by ID, client ID or (part of) its name
 iotopenctl whoami
+iotopenctl function list
+iotopenctl function get kitchen             # unique part of the name
+iotopenctl function meta set kitchen unit=°C
+iotopenctl device functions "hall sensor"
 iotopenctl api 'functionx/{installation}?type=switch'
 ```
 
