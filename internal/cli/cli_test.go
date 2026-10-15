@@ -4,6 +4,7 @@ package cli
 
 import (
 	"encoding/json"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -39,20 +40,23 @@ type result struct {
 func (e *testEnv) run(stdin string, args ...string) result {
 	e.t.Helper()
 	var stdout, stderr strings.Builder
-	app := &App{
+	code := e.app(stdin, &stdout, &stderr).Run(args)
+	return result{stdout.String(), stderr.String(), code}
+}
+
+func (e *testEnv) app(stdin string, stdout, stderr io.Writer) *App {
+	return &App{
 		Name:      "iotopenctl",
 		Version:   "test",
 		In:        strings.NewReader(stdin),
-		Out:       &stdout,
-		Err:       &stderr,
+		Out:       stdout,
+		Err:       stderr,
 		ConfigDir: e.dir,
 		Secrets:   e.secrets,
 		CacheDir:  filepath.Join(e.dir, "cache"),
 		RunEditor: e.editor,
 		Subscribe: e.subscribe,
 	}
-	code := app.Run(args)
-	return result{stdout.String(), stderr.String(), code}
 }
 
 func (e *testEnv) mustRun(stdin string, args ...string) result {
@@ -241,6 +245,16 @@ func TestUse(t *testing.T) {
 	env.mustRun("", "use", "--clear")
 	if inst := env.config().Profile(srv.host()).Installation; inst != nil {
 		t.Errorf("installation after --clear = %+v", inst)
+	}
+
+	// Installations missing from /installationinfo are found through
+	// /installation.
+	srv.hiddenInfo = map[int64]bool{11: true}
+	for _, ref := range []string{"street 2", "11", "1011"} {
+		env.mustRun("", "use", ref)
+		if inst := env.config().Profile(srv.host()).Installation; inst == nil || inst.ID != 11 || inst.Name != "Main Street 2" {
+			t.Errorf("use %q with installationinfo lacking it = %+v", ref, inst)
+		}
 	}
 }
 

@@ -26,8 +26,11 @@ type fakeServer struct {
 	validKeys     map[string]bool
 	loggedOut     []string
 	installations map[int64]*api.Installation
-	objects       map[api.ObjectKind]map[int64]*api.Object
-	nextID        int64
+	// hiddenInfo lists installations left out of /installationinfo, as the
+	// real server does for some installations.
+	hiddenInfo map[int64]bool
+	objects    map[api.ObjectKind]map[int64]*api.Object
+	nextID     int64
 
 	// Values: the full log, and what was published.
 	values    []api.Status
@@ -103,6 +106,9 @@ func newFakeServer(t *testing.T) *fakeServer {
 	mux.HandleFunc("GET /api/v2/installationinfo", f.authed(func(w http.ResponseWriter, r *http.Request) {
 		var list []api.InstallationInfo
 		for _, inst := range f.sortedInstallations() {
+			if f.hiddenInfo[inst.ID] {
+				continue
+			}
 			list = append(list, api.InstallationInfo{ID: inst.ID, Name: inst.Name, ClientID: inst.ClientID, OrganizationID: inst.OrganizationID})
 		}
 		writeJSON(w, list)

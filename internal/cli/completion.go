@@ -116,6 +116,9 @@ func (a *App) installationItems(ctx context.Context) ([]completionItem, error) {
 		if err != nil {
 			return nil, err
 		}
+		if all, err := s.Client.ListInstallations(ctx, nil); err == nil {
+			list = mergeInstallations(list, all)
+		}
 		items := make([]completionItem, len(list))
 		for i, inst := range list {
 			items[i] = completionItem{ID: inst.ID, Name: inst.Name, Info: fmt.Sprintf("ID %d, client ID %d", inst.ID, inst.ClientID)}

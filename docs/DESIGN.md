@@ -19,7 +19,7 @@ nobody should need to look up an installation ID twice.
 ## Non-goals (for now)
 
 - Full coverage of every admin endpoint with dedicated commands.
-- An interactive TUI.
+- A full-screen TUI. The line-oriented `shell` covers interactive use.
 
 ## Name
 
@@ -262,6 +262,7 @@ iotopenctl
 │
 ├── search     [query] [--type T] [--meta k=v]    # global search
 ├── api        <METHOD> <path> [-f file] [--field k=v]
+├── shell      [-e]                               # interactive shell
 └── completion bash | zsh | fish | powershell
 ```
 
@@ -490,6 +491,45 @@ iotopenctl api GET /api/v3beta/log/{installation}         # absolute path
   command.
 - The response body is printed as-is. JSON is pretty-printed when stdout is
   a terminal.
+
+### `shell`: interactive mode
+
+`iotopenctl shell` starts a shell where commands are typed without the
+program name:
+
+```text
+$ iotopenctl shell
+lynx.iotopen.se:Main Street 1> fn ls --type switch
+lynx.iotopen.se:Main Street 1> use "street 2"
+lynx.iotopen.se:Main Street 2> watch hall        # Ctrl-C stops watch, not the shell
+```
+
+- The prompt shows the profile and the installation that commands will use.
+- Tab completes commands, flags and names through the same machinery as the
+  shell completion scripts (`__complete`), so completion behaves the same
+  everywhere. Candidates are matched by prefix and, if none match, by
+  substring, like references. Without a unique match, the longest common
+  prefix is inserted, or the candidates are listed. File names are
+  completed where a command takes a file.
+- Line editing and history come from `golang.org/x/term` (no extra
+  dependency). The history is kept in the cache directory (`shell-history`,
+  at most 1000 lines, mode 0600). Lines starting with a space are not saved.
+- Ctrl-C clears the line, or stops the running command. Ctrl-D, `exit
+  [code]` or `quit` leaves the shell.
+- Words are split like in a POSIX shell, with '...', "..." and backslash
+  escapes. A backslash is literal unless it escapes whitespace, a quote or a
+  backslash, so Windows paths can be typed as they are. `#` starts a
+  comment. A leading `iotopenctl` or `lynxctl` is ignored, so command lines
+  can be pasted as they are.
+- Every command runs as if invoked separately: fresh flags, and the
+  configuration is reloaded, so `use` and `profile use` take effect at once
+  (and also outside the shell). Global flags given to `shell` itself apply
+  to every command and can be overridden per command.
+- When stdin is not a terminal, commands are read one per line without
+  prompts, so `iotopenctl shell < script` runs a script. Commands that read
+  stdin continue reading from the script. `-e` stops at the first failing
+  command. The exit code is that of the last command, or the one given to
+  `exit`.
 
 ## Output
 

@@ -55,6 +55,8 @@ type App struct {
 
 	cfg   *config.Config
 	stdin *bufio.Reader
+	// inShell is set for commands run from the interactive shell.
+	inShell bool
 }
 
 // session is what a command needs to talk to the API.
@@ -236,18 +238,47 @@ func (a *App) installation(ctx context.Context, s *session) (*config.Installatio
 	return a.resolveInstallation(ctx, s, ref, resolve.Options{})
 }
 
+// resolveInstallation resolves ref against /installationinfo. That list only
+// holds the installations the user is directly associated with, not those
+// reached through access to their organization, which /installation also
+// returns. If ref matches nothing in the first list, both are used.
 func (a *App) resolveInstallation(ctx context.Context, s *session, ref string, opts resolve.Options) (*config.Installation, error) {
 	list, err := s.Client.InstallationInfos(ctx)
 	if err != nil {
 		return nil, err
 	}
-	inst, err := resolve.Find("installation", ref, list, func(i api.InstallationInfo) resolve.Key {
-		return resolve.Key{ID: i.ID, AltID: i.ClientID, Name: i.Name}
-	}, opts)
+	find := func(list []api.InstallationInfo) (api.InstallationInfo, error) {
+		return resolve.Find("installation", ref, list, func(i api.InstallationInfo) resolve.Key {
+			return resolve.Key{ID: i.ID, AltID: i.ClientID, Name: i.Name}
+		}, opts)
+	}
+	inst, err := find(list)
+	var nf *resolve.NotFoundError
+	if errors.As(err, &nf) {
+		if all, lerr := s.Client.ListInstallations(ctx, nil); lerr == nil {
+			inst, err = find(mergeInstallations(list, all))
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
 	return &config.Installation{ID: inst.ID, Name: inst.Name, ClientID: inst.ClientID}, nil
+}
+
+// mergeInstallations adds the installations in all that are missing from
+// infos.
+func mergeInstallations(infos []api.InstallationInfo, all []api.Installation) []api.InstallationInfo {
+	seen := make(map[int64]bool, len(infos))
+	for _, i := range infos {
+		seen[i.ID] = true
+	}
+	merged := append([]api.InstallationInfo{}, infos...)
+	for _, i := range all {
+		if !seen[i.ID] {
+			merged = append(merged, api.InstallationInfo{ID: i.ID, Name: i.Name, ClientID: i.ClientID, OrganizationID: i.OrganizationID})
+		}
+	}
+	return merged
 }
 
 func (a *App) printer() (*output.Printer, error) {

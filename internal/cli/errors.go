@@ -25,6 +25,8 @@ const (
 type exitError struct {
 	code int
 	err  error
+	// silent is set when the error has already been reported.
+	silent bool
 }
 
 func (e *exitError) Error() string { return e.err.Error() }

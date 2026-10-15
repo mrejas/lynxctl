@@ -3,6 +3,8 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -44,10 +46,19 @@ func Run(args []string, version string, stdin io.Reader, stdout, stderr io.Write
 
 // Run executes the CLI with the given arguments (without the program name).
 func (a *App) Run(args []string) int {
+	return a.run(context.Background(), args)
+}
+
+// run executes one command line. Cancelling ctx aborts the command.
+func (a *App) run(ctx context.Context, args []string) int {
 	root := a.newRootCommand()
 	root.SetArgs(args)
-	err := root.Execute()
-	if err != nil {
+	err := root.ExecuteContext(ctx)
+	var ee *exitError
+	if err != nil && !(errors.As(err, &ee) && ee.silent) {
+		if ctx.Err() != nil && errors.Is(err, context.Canceled) {
+			err = &exitError{code: ExitError, err: errors.New("interrupted")}
+		}
 		fmt.Fprintf(a.Err, "Error: %s\n", a.errorMessage(err))
 	}
 	return exitCode(err)
@@ -120,6 +131,7 @@ Get started:
 		a.newRoleCommand(),
 		a.newPermissionCommand(),
 		a.newAPICommand(),
+		a.newShellCommand(),
 		a.newVersionCommand(),
 	)
 	return root

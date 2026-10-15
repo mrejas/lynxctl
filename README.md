@@ -68,6 +68,16 @@ iotopenctl search kitchen
 iotopenctl api 'functionx/{installation}?type=switch'
 ```
 
+For interactive work, `iotopenctl shell` starts a shell where commands are
+typed without the program name, with Tab completion, history and a prompt
+that shows the current profile and installation:
+
+```text
+$ iotopenctl shell
+lynx.iotopen.se:Main Street 1> fn get kit<Tab>
+lynx.iotopen.se:Main Street 1> fn get 'Kitchen temperature'
+```
+
 You can be logged in to several servers at once. Each login is a profile,
 named after the server, and the last one you logged in to is the current
 one. Profiles can be referred to by any unique part of their name:
