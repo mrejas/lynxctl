@@ -335,7 +335,7 @@ func (a *App) passwordLogin(ctx context.Context, client *api.Client, username st
 	return token, nil
 }
 
-// deviceID labels the session on the server, e.g. "iotopenctl@laptop".
+// deviceID labels the session on the server, e.g. "lynxctl@laptop".
 func deviceID(name string) string {
 	host, err := os.Hostname()
 	if err != nil || host == "" {

@@ -55,8 +55,8 @@ func Subscribe(ctx context.Context, opts Options, topics []string, handle func(M
 
 	co := paho.NewClientOptions()
 	co.AddBroker(BrokerURL(opts.Broker))
-	co.SetClientID("iotopenctl-" + randomSuffix())
-	co.SetUsername("iotopenctl")
+	co.SetClientID("lynxctl-" + randomSuffix())
+	co.SetUsername("lynxctl")
 	co.SetPassword(opts.Password)
 	co.SetCleanSession(true)
 	co.SetAutoReconnect(true)

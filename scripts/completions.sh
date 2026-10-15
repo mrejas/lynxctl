@@ -11,12 +11,12 @@ out=completions
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-go build -o "$tmp/iotopenctl" ./cmd/iotopenctl
-cp "$tmp/iotopenctl" "$tmp/lynxctl"
+go build -o "$tmp/lynxctl" ./cmd/lynxctl
+cp "$tmp/lynxctl" "$tmp/iotopenctl"
 
 rm -rf "$out"
 mkdir -p "$out"
-for name in iotopenctl lynxctl; do
+for name in lynxctl iotopenctl; do
 	"$tmp/$name" completion bash >"$out/$name.bash"
 	"$tmp/$name" completion zsh >"$out/_$name"
 	"$tmp/$name" completion fish >"$out/$name.fish"

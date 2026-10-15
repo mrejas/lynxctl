@@ -15,8 +15,9 @@ import (
 )
 
 // knownNames are the names the binary is shipped under. Help texts use the
-// name it was invoked as, so that lynxctl users never see "iotopenctl".
-var knownNames = []string{"iotopenctl", "lynxctl"}
+// name it was invoked as, so that iotopenctl users never see "lynxctl".
+// lynxctl comes first: it is the official name and the fallback.
+var knownNames = []string{"lynxctl", "iotopenctl"}
 
 // commandName derives the program name from argv[0].
 func commandName(arg0 string) string {
@@ -132,6 +133,7 @@ Get started:
 		a.newPermissionCommand(),
 		a.newAPICommand(),
 		a.newShellCommand(),
+		a.newBrowseCommand(),
 		a.newVersionCommand(),
 	)
 	return root

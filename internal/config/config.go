@@ -16,7 +16,10 @@ import (
 
 const (
 	// AppName is used for the configuration directory and keyring service.
-	AppName = "iotopenctl"
+	AppName = "lynxctl"
+	// LegacyAppName is what AppName was up to v0.1.0. Configuration and
+	// secrets stored under it are moved to AppName.
+	LegacyAppName = "iotopenctl"
 	// DefaultURL is the server used when nothing else is configured.
 	DefaultURL = "https://lynx.iotopen.se"
 
@@ -57,7 +60,7 @@ type Installation struct {
 	ClientID int64  `yaml:"client-id,omitempty" json:"client_id,omitempty"`
 }
 
-// Dir returns the configuration directory. IOTOPEN_CONFIG_DIR overrides the
+// Dir returns the configuration directory. LYNX_CONFIG_DIR overrides the
 // platform default.
 func Dir() (string, error) {
 	if dir := Getenv("CONFIG_DIR"); dir != "" {
@@ -67,7 +70,25 @@ func Dir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("cannot determine configuration directory: %w", err)
 	}
-	return filepath.Join(base, AppName), nil
+	return dirIn(base), nil
+}
+
+// dirIn returns the configuration directory in base. A directory left by a
+// version that used LegacyAppName is renamed; if that fails, it is used as
+// it is.
+func dirIn(base string) string {
+	dir := filepath.Join(base, AppName)
+	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+		return dir
+	}
+	legacy := filepath.Join(base, LegacyAppName)
+	if fi, err := os.Stat(legacy); err != nil || !fi.IsDir() {
+		return dir
+	}
+	if err := os.Rename(legacy, dir); err != nil {
+		return legacy
+	}
+	return dir
 }
 
 // Load reads config.yaml from dir. A missing file gives an empty config.

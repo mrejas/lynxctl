@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Package cli implements the iotopenctl commands.
+// Package cli implements the lynxctl commands.
 package cli
 
 import (
@@ -26,7 +26,7 @@ import (
 // App holds everything the commands share: streams, configuration and the
 // values of the global flags.
 type App struct {
-	// Name is the name the program was invoked as (iotopenctl or lynxctl).
+	// Name is the name the program was invoked as (lynxctl or iotopenctl).
 	Name    string
 	Version string
 
@@ -66,7 +66,7 @@ type session struct {
 	Profile *config.Profile
 	URL     string
 	Client  *api.Client
-	// FromEnv is true when the API key came from IOTOPEN_API_KEY.
+	// FromEnv is true when the API key came from LYNX_API_KEY.
 	FromEnv bool
 }
 
@@ -96,7 +96,7 @@ func (a *App) secrets() config.SecretStore {
 	return a.Secrets
 }
 
-// profileName returns the active profile: --profile, then IOTOPEN_PROFILE,
+// profileName returns the active profile: --profile, then LYNX_PROFILE,
 // then the current profile in the config. A reference from the flag or the
 // environment may be an exact name or a unique part of one; if it matches no
 // profile it is returned as is (login creates it). An empty name means no
@@ -146,7 +146,7 @@ func (a *App) newClient(baseURL, apiKey string) *api.Client {
 	return c
 }
 
-// serverURL returns IOTOPEN_URL, then the profile's URL, then the default.
+// serverURL returns LYNX_URL, then the profile's URL, then the default.
 func serverURL(p *config.Profile) (string, error) {
 	raw := config.Getenv("URL")
 	if raw == "" && p != nil {
@@ -217,7 +217,7 @@ func hostOf(serverURL string) string {
 }
 
 // installation returns the installation to operate on: -i, then
-// IOTOPEN_INSTALLATION, then the profile's current installation. A numeric
+// LYNX_INSTALLATION, then the profile's current installation. A numeric
 // reference from a flag or the environment is taken as an ID without an API
 // call; names are resolved against the installations the user can access.
 func (a *App) installation(ctx context.Context, s *session) (*config.Installation, error) {

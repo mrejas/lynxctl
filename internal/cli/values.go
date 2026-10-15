@@ -356,6 +356,7 @@ type logOptions struct {
 	since    string
 	from, to string
 	limit    int
+	oldest   bool
 	aggr     string
 	interval string
 }
@@ -389,6 +390,7 @@ server from the time range).`,
 	f.StringVar(&opts.from, "from", "", "start time")
 	f.StringVar(&opts.to, "to", "", "end time (default: now)")
 	f.IntVar(&opts.limit, "limit", 0, "maximum number of values (default: the server's limit, 10000)")
+	f.BoolVar(&opts.oldest, "oldest", false, "with --limit, keep the oldest values instead of the latest")
 	f.StringVar(&opts.aggr, "aggr", "", "aggregate: avg, min, max, median, sum, count, first, last, spread, stddev, percentile(X), integral(X)")
 	f.StringVar(&opts.interval, "interval", "", "aggregation interval, e.g. 10m, 1h, 1d")
 	cmd.MarkFlagsMutuallyExclusive("since", "from")
@@ -405,6 +407,9 @@ func (a *App) showLog(ctx context.Context, refs []string, opts logOptions) error
 	}
 	now := time.Now()
 	q := api.LogQuery{Limit: opts.limit, Order: "desc"}
+	if opts.oldest {
+		q.Order = "asc"
+	}
 	if opts.since != "" {
 		d, err := parseDuration(opts.since)
 		if err != nil {
@@ -450,10 +455,12 @@ func (a *App) showLog(ctx context.Context, refs []string, opts logOptions) error
 	if err != nil {
 		return err
 	}
-	// Fetched newest first so that a limit keeps the latest values; shown
-	// oldest first like any log.
+	// Fetched newest first so that a limit keeps the latest values (unless
+	// --oldest); shown oldest first like any log.
 	entries := page.Data
-	slices.Reverse(entries)
+	if !opts.oldest {
+		slices.Reverse(entries)
+	}
 
 	showName := len(src.targets) != 1
 	rows := output.Rows{Columns: []output.Column{{Header: "time"}}}
@@ -478,7 +485,11 @@ func (a *App) showLog(ctx context.Context, refs []string, opts logOptions) error
 		return err
 	}
 	if page.Total > page.Count {
-		a.info("Showing the latest %d of %d values. Use --limit or a shorter time range to see others.", page.Count, page.Total)
+		which := "latest"
+		if opts.oldest {
+			which = "first"
+		}
+		a.info("Showing the %s %d of %d values. Use --limit or a shorter time range to see others.", which, page.Count, page.Total)
 	}
 	return nil
 }
@@ -500,7 +511,7 @@ installation (obj/#) are watched.
 
 Topics given with --topic are relative to the installation and may contain
 the MQTT wildcards + and #. The broker is the server's host on port 8883
-(TLS) unless --broker or IOTOPEN_BROKER is set.
+(TLS) unless --broker or LYNX_BROKER is set.
 
 With -o json, each value is printed as one JSON object per line.`,
 		Example: fmt.Sprintf(`  %[1]s watch

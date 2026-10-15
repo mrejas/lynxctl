@@ -46,7 +46,7 @@ func (e *testEnv) run(stdin string, args ...string) result {
 
 func (e *testEnv) app(stdin string, stdout, stderr io.Writer) *App {
 	return &App{
-		Name:      "iotopenctl",
+		Name:      "lynxctl",
 		Version:   "test",
 		In:        strings.NewReader(stdin),
 		Out:       stdout,
@@ -178,7 +178,7 @@ func TestLogout(t *testing.T) {
 func TestWhoami(t *testing.T) {
 	srv := newFakeServer(t)
 	env := newTestEnv(t)
-	if r := env.run("", "whoami"); r.code != ExitAuth || !strings.Contains(r.stderr, `Run "iotopenctl login`) {
+	if r := env.run("", "whoami"); r.code != ExitAuth || !strings.Contains(r.stderr, `Run "lynxctl login`) {
 		t.Errorf("whoami before login: exit %d, stderr %s", r.code, r.stderr)
 	}
 	env.login(srv)
@@ -418,11 +418,11 @@ func TestUsageErrors(t *testing.T) {
 
 func TestCommandName(t *testing.T) {
 	tests := map[string]string{
-		"/usr/bin/iotopenctl":           "iotopenctl",
-		"/usr/local/bin/lynxctl":        "lynxctl",
-		`C:\Tools\LYNXCTL.EXE`:          "lynxctl",
-		"./iotopenctl.exe":              "iotopenctl",
-		"/tmp/go-build123/exe/whatever": "iotopenctl",
+		"/usr/bin/lynxctl":              "lynxctl",
+		"/usr/local/bin/iotopenctl":     "iotopenctl",
+		`C:\Tools\IOTOPENCTL.EXE`:       "iotopenctl",
+		"./lynxctl.exe":                 "lynxctl",
+		"/tmp/go-build123/exe/whatever": "lynxctl",
 	}
 	for in, want := range tests {
 		if got := commandName(in); got != want {

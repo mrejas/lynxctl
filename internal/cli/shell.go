@@ -57,36 +57,71 @@ history. The exit code is that of the last command, or the one given to
 				return usageErrorf("already in the shell")
 			}
 			// Pass the global flags given to the shell on to every command.
-			var flags []string
-			cmd.InheritedFlags().VisitAll(func(f *pflag.Flag) {
-				if f.Changed {
-					flags = append(flags, "--"+f.Name+"="+f.Value.String())
-				}
-			})
-			sh := &shell{app: a, flags: flags, errexit: errexit}
-			code, err := sh.run(cmd.Context())
-			if err != nil {
-				return err
-			}
-			if code != ExitOK {
-				// The command has already reported its error.
-				return &exitError{code: code, err: errors.New("shell failed"), silent: true}
-			}
-			return nil
+			flags := inheritedFlags(cmd)
+			sh := newCLIShell(a, flags)
+			sh.errexit = errexit
+			return sh.runCommand(cmd.Context())
 		},
 	}
 	cmd.Flags().BoolVarP(&errexit, "errexit", "e", false, "stop at the first failing command (when reading from a script)")
 	return cmd
 }
 
-// shell runs commands read from a terminal or a script.
+// inheritedFlags returns the global flags given on the command line, to be
+// passed on to every command run from a shell.
+func inheritedFlags(cmd *cobra.Command) []string {
+	var flags []string
+	cmd.InheritedFlags().VisitAll(func(f *pflag.Flag) {
+		if f.Changed {
+			flags = append(flags, "--"+f.Name+"="+f.Value.String())
+		}
+	})
+	return flags
+}
+
+// shell runs commands read from a terminal or a script. What the commands
+// are is up to its mode.
 type shell struct {
 	app     *App
+	mode    shellMode
 	flags   []string
 	errexit bool
 	// status is the exit code of the last command.
-	status  int
-	history *shellHistory
+	status int
+	// color is set when the prompt may use colors.
+	color bool
+	// historyFile is the name of the history file in the cache directory.
+	historyFile string
+	history     *shellHistory
+}
+
+// shellMode defines the commands of a shell.
+type shellMode interface {
+	prompt() string
+	// run runs a command line other than exit and quit.
+	run(ctx context.Context, args []string, interactive bool) int
+	// candidates returns Tab completions for the last, partial word.
+	candidates(args []string, toComplete string) ([]candidate, cobra.ShellCompDirective)
+}
+
+// newCLIShell returns a shell that runs the CLI's commands.
+func newCLIShell(a *App, flags []string) *shell {
+	sh := &shell{app: a, flags: flags, historyFile: "shell-history"}
+	sh.mode = &cliMode{sh}
+	return sh
+}
+
+// runCommand runs the shell as the RunE of a command.
+func (sh *shell) runCommand(ctx context.Context) error {
+	code, err := sh.run(ctx)
+	if err != nil {
+		return err
+	}
+	if code != ExitOK {
+		// The command has already reported its error.
+		return &exitError{code: code, err: errors.New("shell failed"), silent: true}
+	}
+	return nil
 }
 
 func (sh *shell) run(ctx context.Context) (int, error) {
@@ -119,7 +154,8 @@ func (sh *shell) script(ctx context.Context) (int, error) {
 func (sh *shell) interactive(ctx context.Context) (int, error) {
 	a := sh.app
 	fd := int(a.In.(*os.File).Fd())
-	sh.history = loadHistory(filepath.Join(a.cacheDir(), "shell-history"))
+	sh.history = loadHistory(filepath.Join(a.cacheDir(), sh.historyFile))
+	sh.color = colorOn(a.Err)
 	in := &interruptReader{r: a.In}
 	t := term.NewTerminal(struct {
 		io.Reader
@@ -135,7 +171,7 @@ func (sh *shell) interactive(ctx context.Context) (int, error) {
 
 	fmt.Fprintf(a.Err, "%s %s. Type \"help\" for commands, Tab to complete, \"exit\" or Ctrl-D to leave.\n", a.Name, a.Version)
 	for {
-		t.SetPrompt(sh.prompt())
+		t.SetPrompt(sh.mode.prompt())
 		if w, h, err := term.GetSize(terminalFd(a.Err, fd)); err == nil && w > 0 {
 			_ = t.SetSize(w, h)
 		}
@@ -203,18 +239,39 @@ func (sh *shell) execute(ctx context.Context, line string, interactive bool) (in
 		return code, true
 	}
 
-	child := sh.app.child()
 	if interactive {
 		// Ctrl-C stops the command, not the shell.
 		var stop context.CancelFunc
 		ctx, stop = signal.NotifyContext(ctx, os.Interrupt)
 		defer stop()
-	} else {
+	}
+	sh.status = sh.mode.run(ctx, args, interactive)
+	return sh.status, false
+}
+
+// runCLI runs a command of the CLI with the shell's global flags, followed
+// by extra flags, in front of args.
+func (sh *shell) runCLI(ctx context.Context, args []string, interactive bool, extra ...string) int {
+	child := sh.app.child()
+	if !interactive {
 		// Commands that read stdin continue where the script is.
 		child.stdin = sh.app.reader()
 	}
-	sh.status = child.run(ctx, append(append([]string{}, sh.flags...), args...))
-	return sh.status, false
+	cmdline := append(append(append([]string{}, sh.flags...), extra...), args...)
+	return child.run(ctx, cmdline)
+}
+
+// cliMode is the mode of "shell": the CLI's own commands.
+type cliMode struct {
+	sh *shell
+}
+
+func (m *cliMode) run(ctx context.Context, args []string, interactive bool) int {
+	return m.sh.runCLI(ctx, args, interactive)
+}
+
+func (m *cliMode) candidates(args []string, toComplete string) ([]candidate, cobra.ShellCompDirective) {
+	return m.sh.cliCandidates(args, toComplete)
 }
 
 // stripName removes a leading program name, so that command lines can be
@@ -230,12 +287,23 @@ func (sh *shell) stripName(args []string) []string {
 	return args
 }
 
-// prompt shows the profile and installation that commands will use.
-func (sh *shell) prompt() string {
+// profileName returns the profile the shell's commands use, or "".
+func (sh *shell) profileName() string {
 	c := sh.app.child()
 	c.profileFlag = sh.app.profileFlag
 	name, err := c.profileName()
-	if err != nil || name == "" {
+	if err != nil {
+		return ""
+	}
+	return name
+}
+
+// prompt shows the profile and installation that commands will use.
+func (m *cliMode) prompt() string {
+	sh := m.sh
+	c := sh.app.child()
+	name := sh.profileName()
+	if name == "" {
 		return sh.app.Name + "> "
 	}
 	inst := sh.app.installationFlag
@@ -255,7 +323,7 @@ func (sh *shell) prompt() string {
 	if inst == "" {
 		return name + "> "
 	}
-	return name + ":" + inst + "> "
+	return name + ":" + colorize(inst, nodeColors[installationNode], sh.color) + "> "
 }
 
 // child returns an App for running one command from the shell. Each
@@ -384,25 +452,24 @@ func splitWords(line string) (words []word, open bool) {
 }
 
 // quoteWord quotes s if needed so that splitWords gives it back as one
-// word. With open set, the closing quote is left out, so that completion
-// can continue the word.
-func quoteWord(s string, open bool) string {
+// word.
+func quoteWord(s string) string {
+	body, closer := quoteParts(s)
+	return body + closer
+}
+
+// quoteParts quotes s like quoteWord, but returns the closing quote (if
+// any) separately, so that completion can put the cursor before it.
+func quoteParts(s string) (body, closer string) {
 	if s != "" && !strings.ContainsAny(s, " \t'\"\\#") {
-		return s
-	}
-	closing := `"`
-	if open {
-		closing = ""
+		return s, ""
 	}
 	if !strings.Contains(s, "'") {
-		if open {
-			return "'" + s
-		}
-		return "'" + s + "'"
+		return "'" + s, "'"
 	}
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
-	return `"` + s + closing
+	return `"` + s, `"`
 }
 
 // shellHistory is the history of the interactive shell. Lines are kept in
@@ -508,21 +575,22 @@ func (sh *shell) complete(t *term.Terminal, line string, pos int) (string, int, 
 		return "", 0, false
 	}
 
-	all, directive := sh.candidates(args, toComplete)
+	all, directive := sh.mode.candidates(args, toComplete)
 	matches := filterCandidates(all, toComplete)
-	insert := ""
+	// The word is quoted as a whole. If it is not complete (a directory, a
+	// "key=" or a common prefix), the cursor stays before the closing
+	// quote so that typing and Tab continue inside it; a closing quote
+	// left there by an earlier completion is reused.
+	var word string
+	done := false
 	switch {
 	case len(matches) == 1:
-		m := matches[0].value
-		noSpace := directive&cobra.ShellCompDirectiveNoSpace != 0 || strings.HasSuffix(m, string(filepath.Separator))
-		insert = quoteWord(m, noSpace)
-		if !noSpace {
-			insert += " "
-		}
+		word = matches[0].value
+		done = directive&cobra.ShellCompDirectiveNoSpace == 0 && !strings.HasSuffix(word, "/") && !strings.HasSuffix(word, string(filepath.Separator))
 	case len(matches) > 1:
 		prefix := commonPrefix(matches)
 		if len(prefix) > len(toComplete) && strings.HasPrefix(strings.ToLower(prefix), strings.ToLower(toComplete)) {
-			insert = quoteWord(prefix, true)
+			word = prefix
 			break
 		}
 		sh.list(t, matches)
@@ -530,22 +598,31 @@ func (sh *shell) complete(t *term.Terminal, line string, pos int) (string, int, 
 	default:
 		return "", 0, false
 	}
-	newLine := before[:from] + insert + after
-	return newLine, len(before[:from] + insert), true
+	body, closer := quoteParts(word)
+	if closer != "" && strings.HasPrefix(after, closer) {
+		after = after[len(closer):]
+	}
+	head := before[:from] + body
+	if done {
+		head += closer + " "
+		return head + strings.TrimPrefix(after, " "), len(head), true
+	}
+	return head + closer + after, len(head), true
 }
 
 func endsWithSpace(s string) bool {
 	return s != "" && unicode.IsSpace(rune(s[len(s)-1]))
 }
 
-// candidates runs the hidden completion command for args and toComplete.
-func (sh *shell) candidates(args []string, toComplete string) ([]candidate, cobra.ShellCompDirective) {
+// cliCandidates runs the hidden completion command for args and
+// toComplete, with the shell's global flags and extra flags in front.
+func (sh *shell) cliCandidates(args []string, toComplete string, extra ...string) ([]candidate, cobra.ShellCompDirective) {
 	var out strings.Builder
 	c := sh.app.child()
 	c.In = strings.NewReader("")
 	c.Out = &out
 	c.Err = io.Discard
-	cmdline := append([]string{cobra.ShellCompRequestCmd}, sh.flags...)
+	cmdline := append(append([]string{cobra.ShellCompRequestCmd}, sh.flags...), extra...)
 	cmdline = append(append(cmdline, args...), toComplete)
 	if c.Run(cmdline) != ExitOK {
 		return nil, cobra.ShellCompDirectiveError
@@ -605,16 +682,21 @@ func fileCandidates(prefix string, dirsOnly bool) []candidate {
 
 // filterCandidates keeps the candidates that start with toComplete
 // (case-insensitively), or, if there are none, those that contain it, in
-// line with how names are resolved.
+// line with how names are resolved. For paths, only the last element is
+// matched by substring.
 func filterCandidates(cands []candidate, toComplete string) []candidate {
 	lower := strings.ToLower(toComplete)
+	dir, base := "", lower
+	if i := strings.LastIndex(lower, "/"); i >= 0 {
+		dir, base = lower[:i+1], lower[i+1:]
+	}
 	var prefixed, contained []candidate
 	for _, c := range cands {
 		v := strings.ToLower(c.value)
 		switch {
 		case strings.HasPrefix(v, lower):
 			prefixed = append(prefixed, c)
-		case strings.Contains(v, lower):
+		case strings.HasPrefix(v, dir) && strings.Contains(v[len(dir):], base):
 			contained = append(contained, c)
 		}
 	}

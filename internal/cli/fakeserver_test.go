@@ -271,7 +271,12 @@ func newFakeServer(t *testing.T) *fakeServer {
 			}
 			matching = append(matching, v)
 		}
-		sort.Slice(matching, func(i, j int) bool { return matching[i].Timestamp > matching[j].Timestamp })
+		sort.Slice(matching, func(i, j int) bool {
+			if q.Get("order") == "asc" {
+				return matching[i].Timestamp < matching[j].Timestamp
+			}
+			return matching[i].Timestamp > matching[j].Timestamp
+		})
 		page := api.LogPage{Total: len(matching), Data: matching[:min(limit, len(matching))]}
 		page.Count = len(page.Data)
 		writeJSON(w, page)

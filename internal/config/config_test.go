@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/zalando/go-keyring"
 )
 
 func TestSaveAndLoad(t *testing.T) {
@@ -82,13 +84,73 @@ func TestFileStore(t *testing.T) {
 }
 
 func TestGetenvPrefixes(t *testing.T) {
-	t.Setenv("IOTOPEN_PROFILE", "")
-	t.Setenv("LYNX_PROFILE", "lynx")
-	if got := Getenv("PROFILE"); got != "lynx" {
-		t.Errorf("Getenv falls back to LYNX_: got %q", got)
-	}
+	t.Setenv("LYNX_PROFILE", "")
 	t.Setenv("IOTOPEN_PROFILE", "iotopen")
 	if got := Getenv("PROFILE"); got != "iotopen" {
-		t.Errorf("IOTOPEN_ takes precedence: got %q", got)
+		t.Errorf("Getenv falls back to IOTOPEN_: got %q", got)
+	}
+	t.Setenv("LYNX_PROFILE", "lynx")
+	if got := Getenv("PROFILE"); got != "lynx" {
+		t.Errorf("LYNX_ takes precedence: got %q", got)
+	}
+}
+
+func TestDirMovesLegacyDirectory(t *testing.T) {
+	base := t.TempDir()
+	legacy := filepath.Join(base, LegacyAppName)
+	if err := os.MkdirAll(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, "config.yaml"), []byte("current-profile: x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := dirIn(base)
+	if dir != filepath.Join(base, AppName) {
+		t.Fatalf("dirIn = %s", dir)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "config.yaml")); err != nil {
+		t.Errorf("config was not moved: %v", err)
+	}
+	if _, err := os.Stat(legacy); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("legacy directory still exists: %v", err)
+	}
+
+	// An existing new directory wins; the legacy one is left alone.
+	if err := os.MkdirAll(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := dirIn(base); got != dir {
+		t.Errorf("dirIn with both = %s", got)
+	}
+	if _, err := os.Stat(legacy); err != nil {
+		t.Errorf("legacy directory was touched: %v", err)
+	}
+}
+
+func TestKeyringMovesLegacySecrets(t *testing.T) {
+	keyring.MockInit()
+	s := keyringStore{service: AppName, legacy: LegacyAppName}
+	if err := keyring.Set(LegacyAppName, "prod", "secret-1"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Get("prod"); err != nil || got != "secret-1" {
+		t.Fatalf("Get = %q, %v", got, err)
+	}
+	if got, _ := keyring.Get(AppName, "prod"); got != "secret-1" {
+		t.Errorf("secret not stored under %s: %q", AppName, got)
+	}
+	if _, err := keyring.Get(LegacyAppName, "prod"); !errors.Is(err, keyring.ErrNotFound) {
+		t.Errorf("legacy secret left behind: %v", err)
+	}
+	if _, err := s.Get("other"); !errors.Is(err, ErrNoSecret) {
+		t.Errorf("missing secret: %v", err)
+	}
+
+	_ = keyring.Set(LegacyAppName, "old", "secret-2")
+	if err := s.Delete("old"); err != nil && !errors.Is(err, ErrNoSecret) {
+		t.Fatal(err)
+	}
+	if _, err := keyring.Get(LegacyAppName, "old"); !errors.Is(err, keyring.ErrNotFound) {
+		t.Errorf("Delete left the legacy secret: %v", err)
 	}
 }

@@ -5,10 +5,10 @@ package config
 import "os"
 
 // envPrefixes lists the accepted prefixes for environment variables, in order
-// of precedence. LYNX_ is kept for those who still call the platform Lynx.
-var envPrefixes = []string{"IOTOPEN_", "LYNX_"}
+// of precedence. IOTOPEN_ goes with the iotopenctl alias.
+var envPrefixes = []string{"LYNX_", "IOTOPEN_"}
 
-// Getenv returns the value of IOTOPEN_<name>, falling back to LYNX_<name>.
+// Getenv returns the value of LYNX_<name>, falling back to IOTOPEN_<name>.
 // Empty values are treated as unset.
 func Getenv(name string) string {
 	for _, prefix := range envPrefixes {

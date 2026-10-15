@@ -27,13 +27,13 @@ type SecretStore interface {
 }
 
 // DefaultStore returns the OS keyring with a file fallback. Setting
-// IOTOPEN_NO_KEYRING disables the keyring entirely.
+// LYNX_NO_KEYRING disables the keyring entirely.
 func DefaultStore(dir string) SecretStore {
 	file := &FileStore{Path: filepath.Join(dir, credentialsFileName)}
 	if Getenv("NO_KEYRING") != "" {
 		return file
 	}
-	return &chainStore{keyring: keyringStore{service: AppName}, file: file}
+	return &chainStore{keyring: keyringStore{service: AppName, legacy: LegacyAppName}, file: file}
 }
 
 // chainStore prefers the keyring and falls back to a file when the keyring
@@ -72,14 +72,32 @@ func (s *chainStore) Delete(profile string) error {
 
 type keyringStore struct {
 	service string
+	// legacy is a service that secrets are moved from when first read.
+	legacy string
 }
 
 func (s keyringStore) Get(profile string) (string, error) {
 	secret, err := keyring.Get(s.service, profile)
+	if errors.Is(err, keyring.ErrNotFound) && s.legacy != "" {
+		secret, err = s.moveLegacy(profile)
+	}
 	if errors.Is(err, keyring.ErrNotFound) {
 		return "", ErrNoSecret
 	}
 	return secret, err
+}
+
+// moveLegacy moves a secret stored under the legacy service name. If it
+// cannot be stored under the new name, it is left where it is.
+func (s keyringStore) moveLegacy(profile string) (string, error) {
+	secret, err := keyring.Get(s.legacy, profile)
+	if err != nil {
+		return "", err
+	}
+	if keyring.Set(s.service, profile, secret) == nil {
+		_ = keyring.Delete(s.legacy, profile)
+	}
+	return secret, nil
 }
 
 func (s keyringStore) Set(profile, secret string) (string, error) {
@@ -90,6 +108,9 @@ func (s keyringStore) Set(profile, secret string) (string, error) {
 }
 
 func (s keyringStore) Delete(profile string) error {
+	if s.legacy != "" {
+		_ = keyring.Delete(s.legacy, profile)
+	}
 	err := keyring.Delete(s.service, profile)
 	if errors.Is(err, keyring.ErrNotFound) {
 		return ErrNoSecret

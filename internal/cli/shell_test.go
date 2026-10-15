@@ -43,13 +43,13 @@ func TestSplitWords(t *testing.T) {
 
 func TestQuoteWord(t *testing.T) {
 	for _, s := range []string{"plain", "Hall lamp", `it's "x"`, `back\slash`, "#tag", ""} {
-		words, open := splitWords("cmd " + quoteWord(s, false))
+		words, open := splitWords("cmd " + quoteWord(s))
 		if open || len(words) != 2 || words[1].text != s {
-			t.Errorf("quoteWord(%q) does not round-trip: %q", s, quoteWord(s, false))
+			t.Errorf("quoteWord(%q) does not round-trip: %q", s, quoteWord(s))
 		}
 	}
-	if got := quoteWord("Hall l", true); got != "'Hall l" {
-		t.Errorf("open quote = %q", got)
+	if body, closer := quoteParts("Hall l"); body != "'Hall l" || closer != "'" {
+		t.Errorf("quoteParts = %q, %q", body, closer)
 	}
 }
 
@@ -59,7 +59,7 @@ func TestShellScript(t *testing.T) {
 	script := `
 # Comments and empty lines are ignored.
 use "street 2"
-iotopenctl use -q
+lynxctl use -q
 use "main street 1"
 get kitchen -q
 function get nothing-like-this
@@ -104,16 +104,16 @@ function get nothing-like-this
 
 func TestShellPrompt(t *testing.T) {
 	srv, env := setup(t)
-	sh := &shell{app: env.app("", io.Discard, io.Discard)}
-	if got, want := sh.prompt(), srv.host()+":Main Street 1> "; got != want {
+	sh := newCLIShell(env.app("", io.Discard, io.Discard), nil)
+	if got, want := sh.mode.prompt(), srv.host()+":Main Street 1> "; got != want {
 		t.Errorf("prompt = %q, want %q", got, want)
 	}
 	env.mustRun("", "use", "--clear")
-	if got, want := sh.prompt(), srv.host()+"> "; got != want {
+	if got, want := sh.mode.prompt(), srv.host()+"> "; got != want {
 		t.Errorf("prompt = %q, want %q", got, want)
 	}
 	sh.app.installationFlag = "42"
-	if got, want := sh.prompt(), srv.host()+":42> "; got != want {
+	if got, want := sh.mode.prompt(), srv.host()+":42> "; got != want {
 		t.Errorf("prompt with -i = %q, want %q", got, want)
 	}
 }
@@ -125,42 +125,25 @@ func TestShellCompletion(t *testing.T) {
 		io.Reader
 		io.Writer
 	}{strings.NewReader(""), &listed}, "")
-	sh := &shell{app: env.app("", io.Discard, io.Discard)}
+	sh := newCLIShell(env.app("", io.Discard, io.Discard), nil)
 
-	tests := []struct {
-		line string
-		pos  int // -1 for the end of the line
-		want string
-	}{
-		{"fun", -1, "function "},
-		{"function g", -1, "function get "},
-		{"function get kit", -1, "function get 'Kitchen temperature' "},
-		{"function get TEMP", -1, "function get 'Kitchen temperature' "}, // unique part
-		{"iotopenctl get hall", -1, "iotopenctl get 'Hall lamp' "},
-		{"get 'hall l", -1, "get 'Hall lamp' "},
-		{"use main", -1, "use 'Main Street "}, // common prefix, quote left open
-		{"get kit and more", 7, "get 'Kitchen temperature'  and more"},
-		{"function get kitchen x", -1, ""}, // takes one argument
-		{"exit", -1, ""},
+	// | marks the cursor; without it, the cursor is at the end.
+	tests := []struct{ line, want string }{
+		{"fun", "function |"},
+		{"function g", "function get |"},
+		{"function get kit", "function get 'Kitchen temperature' |"},
+		{"function get TEMP", "function get 'Kitchen temperature' |"}, // unique part
+		{"lynxctl get hall", "lynxctl get 'Hall lamp' |"},
+		{"get 'hall l", "get 'Hall lamp' |"},
+		// A common prefix: the cursor stays inside the quotes.
+		{"use main", "use 'Main Street |'"},
+		{"use 'Main Street 1|'", "use 'Main Street 1' |"},
+		{"get kit| and more", "get 'Kitchen temperature' |and more"},
+		{"function get kitchen x", ""}, // takes one argument
+		{"exit", ""},
 	}
 	for _, tt := range tests {
-		pos := tt.pos
-		if pos < 0 {
-			pos = len(tt.line)
-		}
-		got, newPos, ok := sh.complete(tm, tt.line, pos)
-		if tt.want == "" {
-			if ok {
-				t.Errorf("complete(%q) = %q, want nothing", tt.line, got)
-			}
-			continue
-		}
-		if !ok || got != tt.want {
-			t.Errorf("complete(%q) = %q, %v; want %q", tt.line, got, ok, tt.want)
-		}
-		if tt.pos < 0 && newPos != len(got) {
-			t.Errorf("complete(%q) moved the cursor to %d, want the end", tt.line, newPos)
-		}
+		checkCompletion(t, sh, tm, tt.line, tt.want)
 	}
 
 	// No unique completion and no common prefix: the candidates are listed.
@@ -207,5 +190,27 @@ func TestShellHistory(t *testing.T) {
 	}
 	if h := loadHistory(path); h.Len() != historySize {
 		t.Errorf("history has %d lines, want %d", h.Len(), historySize)
+	}
+}
+
+// checkCompletion completes line and compares the result with want. In
+// both, | marks the cursor (default: the end of line). An empty want means
+// that nothing is completed.
+func checkCompletion(t *testing.T, sh *shell, tm *term.Terminal, line, want string) {
+	t.Helper()
+	pos := strings.Index(line, "|")
+	if pos < 0 {
+		pos = len(line)
+	}
+	line = strings.Replace(line, "|", "", 1)
+	got, newPos, ok := sh.complete(tm, line, pos)
+	if want == "" {
+		if ok {
+			t.Errorf("complete(%q) = %q, want nothing", line, got)
+		}
+		return
+	}
+	if !ok || got[:newPos]+"|"+got[newPos:] != want {
+		t.Errorf("complete(%q) = %q (cursor at %d), %v; want %q", line, got, newPos, ok, want)
 	}
 }

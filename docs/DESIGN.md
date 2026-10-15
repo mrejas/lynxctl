@@ -1,4 +1,4 @@
-# iotopenctl — Design
+# lynxctl — Design
 
 A command line interface for the IoT Open platform (formerly known as Lynx).
 The guiding principle is that the CLI should feel **obvious**: the most
@@ -25,8 +25,12 @@ nobody should need to look up an installation ID twice.
 
 | Name         | Role                                         |
 |--------------|----------------------------------------------|
-| `iotopenctl` | Official name, used in docs and packages     |
-| `lynxctl`    | Alias for those of us who still say Lynx     |
+| `lynxctl`    | Official name, used in docs and packages     |
+| `iotopenctl` | Alias after the platform's current name      |
+
+- The platform was called Lynx for a long time, and the name lives on in
+  its servers (`lynx.iotopen.se`) and among the people who built it. The
+  tool keeps that name. Up to v0.1.0 the names were the other way around.
 
 - No hyphenated variants. This follows the `*ctl` convention (`kubectl`,
   `systemctl`, `etcdctl`, ...). It also avoids the `tool-plugin` pattern,
@@ -35,13 +39,13 @@ nobody should need to look up an installation ID twice.
   browser.
 - The program reads `argv[0]` (basename, `.exe` stripped). Help texts, error
   messages and shell completion use whichever name it was invoked as. Any
-  name other than the two above falls back to `iotopenctl`.
+  name other than the two above falls back to `lynxctl`.
 - Both names share the same configuration, credentials and environment
   variables.
 - Packaging:
-  - Linux packages and tarballs install `lynxctl` as a symlink to
-    `iotopenctl`.
-  - On Windows, `lynxctl.exe` is shipped as a copy (or a shim, for
+  - Linux packages and tarballs install `iotopenctl` as a symlink to
+    `lynxctl`.
+  - On Windows, `iotopenctl.exe` is shipped as a copy (or a shim, for
     scoop/winget). Creating symlinks there requires elevated rights.
 
 ## Technology
@@ -74,15 +78,15 @@ Many people work with several platform instances, so you can be logged in
 to any number of servers at once, as with `docker login`.
 
 ```text
-iotopenctl login                            # lynx.iotopen.se -> profile "lynx.iotopen.se"
-iotopenctl login lynx-dev.iotopen.se        # profile "lynx-dev.iotopen.se"
-iotopenctl login --profile customer customer.example.com   # custom name
-iotopenctl profile list
-iotopenctl profile use dev                  # unique part of "lynx-dev.iotopen.se"
-iotopenctl --profile dev installation list  # one-off override
-iotopenctl login dev                        # log in again after the session expired
-iotopenctl logout dev
-iotopenctl logout --all
+lynxctl login                            # lynx.iotopen.se -> profile "lynx.iotopen.se"
+lynxctl login lynx-dev.iotopen.se        # profile "lynx-dev.iotopen.se"
+lynxctl login --profile customer customer.example.com   # custom name
+lynxctl profile list
+lynxctl profile use dev                  # unique part of "lynx-dev.iotopen.se"
+lynxctl --profile dev installation list  # one-off override
+lynxctl login dev                        # log in again after the session expired
+lynxctl logout dev
+lynxctl logout --all
 ```
 
 Rules:
@@ -99,17 +103,17 @@ Rules:
   `https://lynx.iotopen.se` if there is none.
 - The profile you log in to becomes the current profile. If that changes
   the current profile, `login` says so and shows how to switch back.
-- Everywhere a profile is given (`--profile`, `IOTOPEN_PROFILE`,
+- Everywhere a profile is given (`--profile`, `LYNX_PROFILE`,
   `profile use`, `logout`, ...), an exact name or a unique part of a name
   works. `profile delete` requires the exact name.
 
 Configuration file (the directory can be overridden with
-`IOTOPEN_CONFIG_DIR`):
+`LYNX_CONFIG_DIR`):
 
-- Linux: `$XDG_CONFIG_HOME/iotopenctl/config.yaml`, which defaults to
-  `~/.config/iotopenctl/config.yaml`.
-- macOS: `~/Library/Application Support/iotopenctl/config.yaml`.
-- Windows: `%AppData%\iotopenctl\config.yaml`.
+- Linux: `$XDG_CONFIG_HOME/lynxctl/config.yaml`, which defaults to
+  `~/.config/lynxctl/config.yaml`.
+- macOS: `~/Library/Application Support/lynxctl/config.yaml`.
+- Windows: `%AppData%\lynxctl\config.yaml`.
 
 ```yaml
 current-profile: lynx.iotopen.se
@@ -131,16 +135,16 @@ profiles:
 Secrets (session tokens and API keys) are never written to `config.yaml`.
 They are stored in the OS keyring, keyed by profile name. If no keyring is
 available (headless Linux, containers), they go in `credentials.yaml` next
-to the config file, created with mode `0600`. Setting `IOTOPEN_NO_KEYRING`
+to the config file, created with mode `0600`. Setting `LYNX_NO_KEYRING`
 forces the file store.
 
 ### Authentication
 
 | Method            | Command                    | Notes                                    |
 |-------------------|----------------------------|------------------------------------------|
-| Username/password | `iotopenctl login [server]` | Prompts for password and, if enabled, the 2FA code. `--password-stdin` for scripts. |
-| API key           | `iotopenctl login --api-key [server]` | Prompts for the key, or reads it from stdin |
-| Environment       | `IOTOPEN_API_KEY=...`      | For CI and scripts. Nothing is stored.   |
+| Username/password | `lynxctl login [server]` | Prompts for password and, if enabled, the 2FA code. `--password-stdin` for scripts. |
+| API key           | `lynxctl login --api-key [server]` | Prompts for the key, or reads it from stdin |
+| Environment       | `LYNX_API_KEY=...`      | For CI and scripts. Nothing is stored.   |
 
 - `login` with username and password calls `POST /api/v2/auth` using basic
   auth. If the response asks for a challenge, the user is prompted for the
@@ -161,14 +165,14 @@ Almost every API call needs an installation ID. The CLI therefore keeps a
 *current installation* per profile:
 
 ```text
-iotopenctl use "Måbärsvägen"       # by ID, client_id or (sub)name
-iotopenctl use                     # show the current installation
-iotopenctl function list           # uses the current installation
-iotopenctl function list -i 42     # override for one command
-iotopenctl use --clear             # unset it
+lynxctl use "Måbärsvägen"       # by ID, client_id or (sub)name
+lynxctl use                     # show the current installation
+lynxctl function list           # uses the current installation
+lynxctl function list -i 42     # override for one command
+lynxctl use --clear             # unset it
 ```
 
-A numeric `-i` (or `IOTOPEN_INSTALLATION`) is always taken as an installation
+A numeric `-i` (or `LYNX_INSTALLATION`) is always taken as an installation
 ID, without an API call. Names are resolved like any other reference. `use`
 also accepts a client ID.
 
@@ -179,17 +183,17 @@ then environment variable, then profile config.
 
 | Variable               | Meaning                          |
 |------------------------|----------------------------------|
-| `IOTOPEN_PROFILE`      | Profile to use                   |
-| `IOTOPEN_URL`          | Server URL                       |
-| `IOTOPEN_API_KEY`      | API key (bypasses stored creds)  |
-| `IOTOPEN_INSTALLATION` | Installation reference           |
-| `IOTOPEN_BROKER`       | MQTT broker for `watch`          |
-| `IOTOPEN_CACHE_DIR`    | Cache directory for completion   |
-| `IOTOPEN_CONFIG_DIR`   | Configuration directory          |
-| `IOTOPEN_NO_KEYRING`   | Store secrets in a file, not the keyring |
+| `LYNX_PROFILE`      | Profile to use                   |
+| `LYNX_URL`          | Server URL                       |
+| `LYNX_API_KEY`      | API key (bypasses stored creds)  |
+| `LYNX_INSTALLATION` | Installation reference           |
+| `LYNX_BROKER`       | MQTT broker for `watch`          |
+| `LYNX_CACHE_DIR`    | Cache directory for completion   |
+| `LYNX_CONFIG_DIR`   | Configuration directory          |
+| `LYNX_NO_KEYRING`   | Store secrets in a file, not the keyring |
 
-Every variable is also accepted with the `LYNX_` prefix (for example
-`LYNX_API_KEY`). If both are set, `IOTOPEN_` wins.
+Every variable is also accepted with the `IOTOPEN_` prefix (for example
+`IOTOPEN_API_KEY`). If both are set, `LYNX_` wins.
 
 ### Object references
 
@@ -207,7 +211,7 @@ If more than one object matches, the command fails and lists the
 candidates:
 
 ```text
-$ iotopenctl set lampa 1
+$ lynxctl set lampa 1
 Error: "lampa" matches 3 functions:
   1042  Lampa hall
   1043  Lampa kök
@@ -231,7 +235,7 @@ frequent operations, reading and writing values, are also available as
 top-level verbs.
 
 ```text
-iotopenctl
+lynxctl
 ├── login | logout | whoami
 ├── profile    list | use | show | delete
 ├── use        [installation]
@@ -263,6 +267,7 @@ iotopenctl
 ├── search     [query] [--type T] [--meta k=v]    # global search
 ├── api        <METHOD> <path> [-f file] [--field k=v]
 ├── shell      [-e]                               # interactive shell
+├── browse     [-e]                               # browse like a file system (experimental)
 └── completion bash | zsh | fish | powershell
 ```
 
@@ -274,22 +279,22 @@ Every command has aliases for the common short forms: `ls` for `list`, and
 These are the everyday commands and are kept as short as possible.
 
 ```text
-iotopenctl get                                  # all functions with their latest value
-iotopenctl get "temp kök" "temp ute"
-iotopenctl get "temp kök" -q                    # just the number
-iotopenctl set "lampa hall" on                  # numbers, on/off, true/false; "21,5" works too
-iotopenctl watch                                # everything under obj/# live
-iotopenctl watch "temp kök" --count 1 -q        # wait for the next value
-iotopenctl watch --topic 'obj/zwave/#'
-iotopenctl log "temp kök" --since 7d --aggr avg --interval 1h
-iotopenctl log "temp kök" --from 2026-10-01 --to 2026-10-02 -o csv
+lynxctl get                                  # all functions with their latest value
+lynxctl get "temp kök" "temp ute"
+lynxctl get "temp kök" -q                    # just the number
+lynxctl set "lampa hall" on                  # numbers, on/off, true/false; "21,5" works too
+lynxctl watch                                # everything under obj/# live
+lynxctl watch "temp kök" --count 1 -q        # wait for the next value
+lynxctl watch --topic 'obj/zwave/#'
+lynxctl log "temp kök" --since 7d --aggr avg --interval 1h
+lynxctl log "temp kök" --from 2026-10-01 --to 2026-10-02 -o csv
 ```
 
 | Command | Implementation                                                        |
 |---------|-----------------------------------------------------------------------|
 | `get`   | Read meta `topic_read` of the functions, call `POST /api/v2/status/{installation}` with the topics (or `GET` for all). |
 | `set`   | Read meta `topic_write`, call `POST /api/v2/mqtt/publish/{installation}` with `{"topic": ..., "payload": {"value": ...}}`. No MQTT connection is needed. |
-| `watch` | MQTT over TLS on the server's host, port 8883 (override with `--broker` or `IOTOPEN_BROKER`). The token or API key is the password; the username is not checked. |
+| `watch` | MQTT over TLS on the server's host, port 8883 (override with `--broker` or `LYNX_BROKER`). The token or API key is the password; the username is not checked. |
 | `log`   | `GET /api/v3beta/log/{installation}` with `topics`, `from`, `to`, `limit`, `order=desc`, and `aggr_method`/`aggr_interval` only when asked for. |
 
 Topics:
@@ -308,13 +313,14 @@ Presentation:
   key (`%.1f °C`), else followed by `unit`. `-q` prints raw values, and
   JSON/YAML include both the raw and the formatted value.
 - `log` fetches newest first (so `--limit` keeps the latest values) and
-  shows them oldest first. It says so when more values match than were
+  shows them oldest first. `--oldest` fetches oldest first instead, so that
+  `--limit` keeps the oldest values. It says so when more values match than were
   shown. The name column is left out when only one function is shown.
 - `watch` prints one line per value. With `-o json` it prints one JSON
   object per line. `--count N` stops after N values.
 - `get`, `log` and `watch` select functions by name, by `--meta` and
   `--type` (both with `*` wildcards), or both; duplicates are removed.
-  `iotopenctl get --meta device_id=12` shows all values of a device.
+  `lynxctl get --meta device_id=12` shows all values of a device.
   A selection that matches no function with a `topic_read` is an error
   (exit code 3).
 - `get` without arguments lists all functions that have a `topic_read`.
@@ -331,26 +337,26 @@ Time arguments (`--since`, `--from`, `--to`) accept:
 ### CRUD and metadata
 
 ```text
-iotopenctl function list --type switch --meta device_id=12
-iotopenctl function list --device "sensor hall"        # shorthand for --meta device_id=<id>
-iotopenctl function get "temp kök"
-iotopenctl function create --type temperature --name "Temp kök" --meta topic_read=obj/zwave/12/temp
-iotopenctl function create -f function.yaml            # or -f - for stdin
-iotopenctl function edit "temp kök"                    # opens $EDITOR
-iotopenctl function delete 1042
+lynxctl function list --type switch --meta device_id=12
+lynxctl function list --device "sensor hall"        # shorthand for --meta device_id=<id>
+lynxctl function get "temp kök"
+lynxctl function create --type temperature --name "Temp kök" --meta topic_read=obj/zwave/12/temp
+lynxctl function create -f function.yaml            # or -f - for stdin
+lynxctl function edit "temp kök"                    # opens $EDITOR
+lynxctl function delete 1042
 
-iotopenctl function meta get "temp kök"                # all keys
-iotopenctl function meta get "temp kök" unit
-iotopenctl function meta set "temp kök" unit=°C format="%.1f °C"
-iotopenctl function meta unset "temp kök" format
+lynxctl function meta get "temp kök"                # all keys
+lynxctl function meta get "temp kök" unit
+lynxctl function meta set "temp kök" unit=°C format="%.1f °C"
+lynxctl function meta unset "temp kök" format
 
-iotopenctl device functions "sensor hall"
-iotopenctl device delete 12 --cascade                  # also deletes the device's functions
+lynxctl device functions "sensor hall"
+lynxctl device delete 12 --cascade                  # also deletes the device's functions
 
-iotopenctl installation get                            # the current installation
-iotopenctl installation edit summer
-iotopenctl installation create --name "Main Street 1"  # --org defaults to your only organization
-iotopenctl installation meta set customer=ACME         # current installation, or -i
+lynxctl installation get                            # the current installation
+lynxctl installation edit summer
+lynxctl installation create --name "Main Street 1"  # --org defaults to your only organization
+lynxctl installation meta set customer=ACME         # current installation, or -i
 ```
 
 - `--meta key=value` can be repeated, and values may contain `*` wildcards.
@@ -392,25 +398,25 @@ API work without changes to the CLI. On top of that, each resource has
 flags for what is natural to type:
 
 ```text
-iotopenctl schedule create --function "hall lamp" --value on --cron "0 7 * * 1,2,3,4,5"
-iotopenctl schedule disable 1042
+lynxctl schedule create --function "hall lamp" --value on --cron "0 7 * * 1,2,3,4,5"
+lynxctl schedule disable 1042
 
-iotopenctl file upload floorplan.png manual.pdf      # MIME type guessed
-iotopenctl file download floorplan                   # saved as ./floorplan.png
-iotopenctl file download config.json -O - | jq .
-iotopenctl file list --org 7                         # organization files
+lynxctl file upload floorplan.png manual.pdf      # MIME type guessed
+lynxctl file download floorplan                   # saved as ./floorplan.png
+lynxctl file download config.json -O - | jq .
+lynxctl file list --org 7                         # organization files
 
-iotopenctl edge-app create --name "Heating control" --category climate ...
-iotopenctl edge-app upload heating ./src             # app.json + app.lua, prints the hash
-iotopenctl edge-app publish heating 1.2.0            # names the newest upload
-iotopenctl edge-app instance create --app heating --config target=21
+lynxctl edge-app create --name "Heating control" --category climate ...
+lynxctl edge-app upload heating ./src             # app.json + app.lua, prints the hash
+lynxctl edge-app publish heating 1.2.0            # names the newest upload
+lynxctl edge-app instance create --app heating --config target=21
 
-iotopenctl notification message create --name Alarm --text '{{.payload.message}}'
-iotopenctl notification output create --name "Mail on-call" --executor mail --message alarm \
+lynxctl notification message create --name Alarm --text '{{.payload.message}}'
+lynxctl notification output create --name "Mail on-call" --executor mail --message alarm \
     --config recipients=oncall@example.com
-iotopenctl notification send "mail on-call" -F message="Water leak"
+lynxctl notification send "mail on-call" -F message="Water leak"
 
-iotopenctl search kitchen --type function
+lynxctl search kitchen --type function
 ```
 
 - `create` takes `-f file` (YAML or JSON), `-F key=value` (typed, dotted
@@ -437,18 +443,18 @@ iotopenctl search kitchen --type function
 ### Administration
 
 ```text
-iotopenctl org tree                                  # the organization hierarchy
-iotopenctl org create --name "ACME Malmö"            # --parent defaults to your organization
-iotopenctl org delete "ACME Malmö" --force           # also deletes everything in it
+lynxctl org tree                                  # the organization hierarchy
+lynxctl org create --name "ACME Malmö"            # --parent defaults to your organization
+lynxctl org delete "ACME Malmö" --force           # also deletes everything in it
 
-iotopenctl user get                                  # yourself ("me")
-iotopenctl user create --email eve@example.com --first-name Eve --last-name Adams --role user
-iotopenctl user password                             # asks for the current and new password
-iotopenctl user token create --name ci --expires 90d # prints the token once
-iotopenctl user token create --name ci -q | iotopenctl login --profile ci --api-key
+lynxctl user get                                  # yourself ("me")
+lynxctl user create --email eve@example.com --first-name Eve --last-name Adams --role user
+lynxctl user password                             # asks for the current and new password
+lynxctl user token create --name ci --expires 90d # prints the token once
+lynxctl user token create --name ci -q | lynxctl login --profile ci --api-key
 
-iotopenctl role create --name Integration --priority 5 --allow installation/list/all --deny 'functionx/+/delete'
-iotopenctl permission list --allowed
+lynxctl role create --name Integration --priority 5 --allow installation/list/all --deny 'functionx/+/delete'
+lynxctl permission list --allowed
 ```
 
 - Users are referred to by email address (or a unique part of it), ID, or
@@ -471,10 +477,10 @@ Inspired by `gh api`. It makes every endpoint usable from day one, including
 endpoints that have no dedicated command yet. It replaces `acurl.sh`.
 
 ```text
-iotopenctl api user/me                                    # GET /api/v2/user/me
-iotopenctl api POST 'schedule/{installation}' -f schedule.json
-iotopenctl api PUT 'functionx/{installation}/1042/meta/unit?create_missing=true' -F value=°C
-iotopenctl api GET /api/v3beta/log/{installation}         # absolute path
+lynxctl api user/me                                    # GET /api/v2/user/me
+lynxctl api POST 'schedule/{installation}' -f schedule.json
+lynxctl api PUT 'functionx/{installation}/1042/meta/unit?create_missing=true' -F value=°C
+lynxctl api GET /api/v3beta/log/{installation}         # absolute path
 ```
 
 - `METHOD` defaults to `GET`, or to `POST` when a body is given.
@@ -494,11 +500,11 @@ iotopenctl api GET /api/v3beta/log/{installation}         # absolute path
 
 ### `shell`: interactive mode
 
-`iotopenctl shell` starts a shell where commands are typed without the
+`lynxctl shell` starts a shell where commands are typed without the
 program name:
 
 ```text
-$ iotopenctl shell
+$ lynxctl shell
 lynx.iotopen.se:Main Street 1> fn ls --type switch
 lynx.iotopen.se:Main Street 1> use "street 2"
 lynx.iotopen.se:Main Street 2> watch hall        # Ctrl-C stops watch, not the shell
@@ -511,6 +517,10 @@ lynx.iotopen.se:Main Street 2> watch hall        # Ctrl-C stops watch, not the s
   substring, like references. Without a unique match, the longest common
   prefix is inserted, or the candidates are listed. File names are
   completed where a command takes a file.
+- Completed words that need quoting (names with spaces) are quoted as a
+  whole. While the word is not finished (a directory, a common prefix, a
+  `key=`), the cursor stays before the closing quote, so that typing and
+  Tab continue inside it; the line is always correctly quoted.
 - Line editing and history come from `golang.org/x/term` (no extra
   dependency). The history is kept in the cache directory (`shell-history`,
   at most 1000 lines, mode 0600). Lines starting with a space are not saved.
@@ -519,17 +529,61 @@ lynx.iotopen.se:Main Street 2> watch hall        # Ctrl-C stops watch, not the s
 - Words are split like in a POSIX shell, with '...', "..." and backslash
   escapes. A backslash is literal unless it escapes whitespace, a quote or a
   backslash, so Windows paths can be typed as they are. `#` starts a
-  comment. A leading `iotopenctl` or `lynxctl` is ignored, so command lines
+  comment. A leading `lynxctl` or `iotopenctl` is ignored, so command lines
   can be pasted as they are.
 - Every command runs as if invoked separately: fresh flags, and the
   configuration is reloaded, so `use` and `profile use` take effect at once
   (and also outside the shell). Global flags given to `shell` itself apply
   to every command and can be overridden per command.
 - When stdin is not a terminal, commands are read one per line without
-  prompts, so `iotopenctl shell < script` runs a script. Commands that read
+  prompts, so `lynxctl shell < script` runs a script. Commands that read
   stdin continue reading from the script. `-e` stops at the first failing
   command. The exit code is that of the last command, or the one given to
   `exit`.
+
+### `browse`: the platform as a file system (experimental)
+
+`lynxctl browse` is a shell like `shell`, where the platform is laid out
+as directories:
+
+```text
+/                                   top organizations
+/<org>/<org>/...                    sub-organizations and installations
+/.../<installation>                 devices, and functions without a device
+/.../<installation>/<device>        the device's functions
+/.../<function>                     the function's topic_* meta keys (files)
+```
+
+- `cd [path]`, `ls [-l] [path]...`, `cat [-o format] [path]` and `pwd`.
+  `cd` without a path and `~` go to the current installation, which is also
+  where the browser starts. `cat` shows an object with the matching `get`
+  command (so `-o` works).
+- Values: `cat` on a topic shows its log with the defaults of `log` (the
+  last 24 hours). `head [-n N]` and `tail [-n N] [-f]` show the oldest and
+  latest N values (default 10) of a topic, function, device (its functions)
+  or installation; `tail -f` then follows new values with `watch`. Other
+  flags (`--since`, `-o`, `-q`, ...) are passed on to `log`. `head` uses
+  `log --oldest`, which asks the server for `order=asc`.
+- On a terminal, `ls` colors names by kind, as `ls --color` does:
+  organizations bold magenta, installations bold blue, devices yellow,
+  functions green, meta keys uncolored. The prompt colors each element of
+  the path the same way (and `shell` colors the installation in its prompt).
+  Directories always end with `/`, and
+  `ls -l` names the kind. Symbols (emoji) were rejected: their width varies
+  between terminals, which breaks alignment. Colors follow the general
+  rule: only when stdout is a terminal and `NO_COLOR` is not set.
+- Path elements are names, IDs or unique parts of names, resolved like
+  other references. Names containing `/` must be given by ID, and Tab
+  completes them as IDs.
+- Organizations whose parent is not visible are shown at the top, and so
+  are installations whose organization is not visible. Installations are
+  taken from both `/installation` and `/installationinfo`. A function
+  belongs to the device in its `device_id` meta key; functions without one,
+  or with one that matches no device, are listed in the installation.
+- Any other command is run as in `shell`, with `-i` set to the installation
+  the current directory is in.
+- What has been fetched is reused for a minute, and forgotten after any
+  command that is passed on to the CLI.
 
 ## Output
 
@@ -541,7 +595,7 @@ lynx.iotopen.se:Main Street 2> watch hall        # Ctrl-C stops watch, not the s
 - `-q` / `--quiet` prints only IDs, one per line, for piping:
 
   ```text
-  iotopenctl fn ls --meta device_id=12 -q | xargs -n1 iotopenctl fn rm --yes
+  lynxctl fn ls --meta device_id=12 -q | xargs -n1 lynxctl fn rm --yes
   ```
 
 - Colors are used only when stdout is a terminal. `NO_COLOR` is respected.
@@ -551,8 +605,8 @@ lynx.iotopen.se:Main Street 2> watch hall        # Ctrl-C stops watch, not the s
 ## Errors and safety
 
 - Error messages say what to do next:
-  - `Not logged in. Run "iotopenctl login [server]".`
-  - `No installation selected. Run "iotopenctl use <installation>" or pass -i.`
+  - `Not logged in. Run "lynxctl login [server]".`
+  - `No installation selected. Run "lynxctl use <installation>" or pass -i.`
 - HTTP errors include the status code and the API's message. `--debug`
   prints the full requests and responses, with secrets redacted.
 - Destructive commands (`delete`, `device delete --cascade`) ask for
@@ -576,7 +630,7 @@ lynx.iotopen.se:Main Street 2> watch hall        # Ctrl-C stops watch, not the s
   function names, meta keys (as `key=` for `meta set`) and function types
   come from the configuration and the API.
 - Lists fetched from the API are cached for one minute in the user cache
-  directory (`IOTOPEN_CACHE_DIR` overrides it), so pressing Tab repeatedly
+  directory (`LYNX_CACHE_DIR` overrides it), so pressing Tab repeatedly
   costs one API call. Only names, IDs and types are cached, never secrets.
 - Commands that take several functions (`get`, `log`, `watch`) do not
   suggest functions already on the command line.
@@ -592,9 +646,9 @@ goes public.
 
 | Artifact | Contents |
 |----------|----------|
-| `.tar.gz` (Linux, macOS) | `iotopenctl`, completions, README, LICENSE |
-| `.zip` (Windows) | `iotopenctl.exe` and `lynxctl.exe` (a copy), completions, README, LICENSE |
-| `.deb`, `.rpm`, `.apk` | `/usr/bin/iotopenctl`, `/usr/bin/lynxctl` as a symlink, completions for bash, zsh and fish under both names |
+| `.tar.gz` (Linux, macOS) | `lynxctl`, completions, README, LICENSE |
+| `.zip` (Windows) | `lynxctl.exe` and `iotopenctl.exe` (a copy), completions, README, LICENSE |
+| `.deb`, `.rpm`, `.apk` | `/usr/bin/lynxctl`, `/usr/bin/iotopenctl` as a symlink, completions for bash, zsh and fish under both names |
 | Scoop manifest | Both executables on `PATH` |
 | winget manifest | Portable zip with both executables |
 
@@ -612,7 +666,7 @@ GPL-3.0-or-later. Every source file starts with an SPDX identifier.
 ## Project layout
 
 ```text
-cmd/iotopenctl/        main package (tiny: builds the root command and runs it)
+cmd/lynxctl/        main package (tiny: builds the root command and runs it)
 internal/cli/          cobra commands, one file per noun
 internal/api/          HTTP client, auth, typed API models
 internal/mqtt/         MQTT client for watch
@@ -634,14 +688,14 @@ docs/                  design and user documentation
    - reference resolution
 3. **Values (done):** `get`, `set`, `watch`, `log`.
 4. **Polish (done):** dynamic completion, GoReleaser packaging (including
-   the `lynxctl` alias), and manifests for scoop and winget.
+   the `iotopenctl` alias), and manifests for scoop and winget.
 5. **More resources (done):** schedule, file, search, edge-app, notification.
 6. **Admin (done):** organization, user (with tokens and passwords), role,
    permissions.
 
 ## Future ideas
 
-- Plugins: an executable named `iotopenctl-<name>` on `PATH` becomes
-  available as `iotopenctl <name>` (as with git and kubectl).
-- `iotopenctl apply -f dir/` for declarative setup of devices and functions.
+- Plugins: an executable named `lynxctl-<name>` on `PATH` becomes
+  available as `lynxctl <name>` (as with git and kubectl).
+- `lynxctl apply -f dir/` for declarative setup of devices and functions.
 - Export and import of an installation's devices and functions.

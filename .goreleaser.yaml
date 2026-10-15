@@ -5,14 +5,15 @@
 #
 #   goreleaser release --snapshot --clean
 #
-# The program is shipped as iotopenctl and, for those who still call the
-# platform Lynx, as lynxctl. It takes its name from how it is invoked, so
-# the alias is a symlink in Linux packages and a copy on Windows, where
-# symlinks need elevated rights.
+# The program is shipped as lynxctl and, after the platform's current name,
+# as iotopenctl. It takes its name from how it is invoked, so the alias is a
+# symlink in Linux packages and a copy on Windows, where symlinks need
+# elevated rights. Up to v0.1.0 the names were the other way around, so the
+# packages replace the old iotopenctl package.
 
 version: 2
 
-project_name: iotopenctl
+project_name: lynxctl
 
 before:
   hooks:
@@ -20,19 +21,19 @@ before:
     - sh scripts/completions.sh
 
 builds:
-  - id: iotopenctl
-    main: ./cmd/iotopenctl
-    binary: iotopenctl
+  - id: lynxctl
+    main: ./cmd/lynxctl
+    binary: lynxctl
     env: [CGO_ENABLED=0]
     goos: [linux, windows, darwin]
     goarch: [amd64, arm64]
     flags: [-trimpath]
     ldflags: ["-s -w -X main.version={{ .Version }}"]
 
-  # Windows-only copy under the Lynx name.
-  - id: lynxctl
-    main: ./cmd/iotopenctl
-    binary: lynxctl
+  # Windows-only copy under the IoT Open name.
+  - id: iotopenctl
+    main: ./cmd/lynxctl
+    binary: iotopenctl
     env: [CGO_ENABLED=0]
     goos: [windows]
     goarch: [amd64, arm64]
@@ -41,8 +42,8 @@ builds:
 
 archives:
   - id: default
-    ids: [iotopenctl, lynxctl]
-    # Windows archives also contain lynxctl.exe; elsewhere the alias is a
+    ids: [lynxctl, iotopenctl]
+    # Windows archives also contain iotopenctl.exe; elsewhere the alias is a
     # symlink created by the package or the user.
     allow_different_binary_count: true
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
@@ -57,8 +58,12 @@ archives:
 
 nfpms:
   - id: packages
-    ids: [iotopenctl]
-    package_name: iotopenctl
+    ids: [lynxctl]
+    package_name: lynxctl
+    # The package was called iotopenctl up to v0.1.0.
+    replaces: [iotopenctl]
+    conflicts: [iotopenctl]
+    provides: [iotopenctl]
     file_name_template: "{{ .ConventionalFileName }}"
     vendor: IoT Open
     homepage: https://github.com/mrejas/lynx-cli
@@ -69,43 +74,43 @@ nfpms:
     formats: [deb, rpm, apk]
     bindir: /usr/bin
     contents:
-      - src: /usr/bin/iotopenctl
-        dst: /usr/bin/lynxctl
+      - src: /usr/bin/lynxctl
+        dst: /usr/bin/iotopenctl
         type: symlink
 
-      - src: completions/iotopenctl.bash
-        dst: /usr/share/bash-completion/completions/iotopenctl
       - src: completions/lynxctl.bash
         dst: /usr/share/bash-completion/completions/lynxctl
+      - src: completions/iotopenctl.bash
+        dst: /usr/share/bash-completion/completions/iotopenctl
 
       # Debian looks for zsh completions in vendor-completions, other
       # distributions in site-functions.
-      - src: completions/_iotopenctl
-        dst: /usr/share/zsh/vendor-completions/_iotopenctl
-        packager: deb
       - src: completions/_lynxctl
         dst: /usr/share/zsh/vendor-completions/_lynxctl
         packager: deb
       - src: completions/_iotopenctl
-        dst: /usr/share/zsh/site-functions/_iotopenctl
-        packager: rpm
+        dst: /usr/share/zsh/vendor-completions/_iotopenctl
+        packager: deb
       - src: completions/_lynxctl
         dst: /usr/share/zsh/site-functions/_lynxctl
         packager: rpm
       - src: completions/_iotopenctl
         dst: /usr/share/zsh/site-functions/_iotopenctl
-        packager: apk
+        packager: rpm
       - src: completions/_lynxctl
         dst: /usr/share/zsh/site-functions/_lynxctl
         packager: apk
+      - src: completions/_iotopenctl
+        dst: /usr/share/zsh/site-functions/_iotopenctl
+        packager: apk
 
-      - src: completions/iotopenctl.fish
-        dst: /usr/share/fish/vendor_completions.d/iotopenctl.fish
       - src: completions/lynxctl.fish
         dst: /usr/share/fish/vendor_completions.d/lynxctl.fish
+      - src: completions/iotopenctl.fish
+        dst: /usr/share/fish/vendor_completions.d/iotopenctl.fish
 
       - src: LICENSE
-        dst: /usr/share/doc/iotopenctl/copyright
+        dst: /usr/share/doc/lynxctl/copyright
         packager: deb
         file_info:
           mode: 0644
@@ -137,7 +142,7 @@ release:
 # skip_upload.
 scoops:
   - ids: [default]
-    name: iotopenctl
+    name: lynxctl
     homepage: https://github.com/mrejas/lynx-cli
     description: Command line interface for the IoT Open platform (formerly Lynx).
     license: GPL-3.0-or-later
@@ -148,10 +153,10 @@ scoops:
     skip_upload: true
 
 winget:
-  - name: iotopenctl
+  - name: lynxctl
     ids: [default]
     publisher: Marcus Rejås
-    package_identifier: MarcusRejas.iotopenctl
+    package_identifier: MarcusRejas.lynxctl
     short_description: Command line interface for the IoT Open platform (formerly Lynx).
     license: GPL-3.0-or-later
     homepage: https://github.com/mrejas/lynx-cli
@@ -160,7 +165,7 @@ winget:
     repository:
       owner: mrejas
       name: winget-pkgs
-      branch: "iotopenctl-{{ .Version }}"
+      branch: "lynxctl-{{ .Version }}"
       token: "{{ .Env.WINGET_TOKEN }}"
       pull_request:
         enabled: true

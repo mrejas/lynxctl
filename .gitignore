@@ -1,6 +1,6 @@
 # Build output
-/iotopenctl
 /lynxctl
+/iotopenctl
 /dist/
 *.exe
 

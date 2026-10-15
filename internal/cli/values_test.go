@@ -214,6 +214,10 @@ func TestLog(t *testing.T) {
 	if r.stdout != "21.46\n" || !strings.Contains(r.stderr, "Showing the latest 1 of 2 values") {
 		t.Errorf("log --limit 1: stdout %q, stderr %q", r.stdout, r.stderr)
 	}
+	r = env.mustRun("", "log", "kitchen", "--limit", "1", "--oldest", "-q")
+	if r.stdout != "20.04\n" || !strings.Contains(r.stderr, "Showing the first 1 of 2 values") {
+		t.Errorf("log --limit 1 --oldest: stdout %q, stderr %q", r.stdout, r.stderr)
+	}
 
 	env.mustRun("", "log", "kitchen", "--from", "2026-10-01", "--to", "2026-10-02 12:00", "--aggr", "avg", "--interval", "1h")
 	q, _ = url.ParseQuery(srv.lastLog)

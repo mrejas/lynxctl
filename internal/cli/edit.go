@@ -48,7 +48,7 @@ var errEditCancelled = errors.New("edit cancelled")
 // apply fails, the editor is opened again with the error at the top. Saving
 // without changes cancels.
 func (a *App) editLoop(header string, body []byte, apply func([]byte) error) error {
-	f, err := os.CreateTemp("", "iotopenctl-*.yaml")
+	f, err := os.CreateTemp("", "lynxctl-*.yaml")
 	if err != nil {
 		return err
 	}

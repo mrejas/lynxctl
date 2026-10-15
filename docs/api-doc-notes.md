@@ -1,6 +1,6 @@
 # Notes on the IoT Open API documentation
 
-Observations made while building iotopenctl against
+Observations made while building lynxctl against
 <https://lynx.iotopen.se/api-doc/> (REST), <https://lynx.iotopen.se/api-doc/mqtt/>
 and <https://lynx.iotopen.se/tech/docs/platform/>. Each note says whether it
 was **verified** against the server or is **from the docs only**.
@@ -31,7 +31,7 @@ was **verified** against the server or is **from the docs only**.
 7. **2FA field name.** The login response documents `nextstep` with the
    value `"smslogin"`. Older scripts look for `next_step` containing
    `"challenge"`. Which is right (or both, depending on version)?
-   iotopenctl accepts both. *Docs only.*
+   lynxctl accepts both. *Docs only.*
 8. **Login request body is undocumented.** Clients send
    `{"device_id": ..., "app_version": ...}` with `POST /api/v2/auth`; the docs
    list no body at all. What are these fields used for? *Docs only.*
@@ -66,7 +66,7 @@ was **verified** against the server or is **from the docs only**.
     Is the difference real? *Docs only.*
 14. **Meta values typed as strings, example with a number.** The DeviceX
     example has `"device_id": 200`, while meta is documented as a map of
-    strings. iotopenctl accepts both. *Docs only.*
+    strings. lynxctl accepts both. *Docs only.*
 15. **Filtering functions by device.** The common
     `functionx?device_id=<id>` filter works through the generic meta
     filter, but it is not mentioned. An example would help. *Docs only.*
@@ -77,7 +77,7 @@ was **verified** against the server or is **from the docs only**.
 17. **Meta filter semantics.** List endpoints accept `{metadata-key}=value`
     with `*` wildcards, but it is not documented whether matching is
     case-sensitive, whether `*` matches `/` (relevant for topics), or
-    whether `key=*` matches only objects that have the key. iotopenctl
+    whether `key=*` matches only objects that have the key. lynxctl
     sends `key=*` for `--meta key` and assumes the latter. *Docs only.*
 
 ### Installations
@@ -89,7 +89,7 @@ was **verified** against the server or is **from the docs only**.
     reached through access to their organization, which
     `GET /api/v2/installation` also returns. The docs should say so, and
     explain the two ways of being connected to an installation (and that a
-    direct association can give other rights). iotopenctl falls back to
+    direct association can give other rights). lynxctl falls back to
     `/installation` when a name is not found. *Verified* on lynx-dev.
 
 ### Search
@@ -139,7 +139,7 @@ was **verified** against the server or is **from the docs only**.
     documents the response as "None" although it returns app.json.
     *Docs only.*
 30. **`version` parameter of download/configure.** Is it the version name
-    (`1.2.0`) or the hash? iotopenctl sends the name. *Docs only.*
+    (`1.2.0`) or the hash? lynxctl sends the name. *Docs only.*
 31. **Notification send body.** `POST .../output/{output_id}/send` has no
     body schema; only the description says a JSON object becomes available
     to templates. *Docs only.*

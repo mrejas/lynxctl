@@ -27,7 +27,7 @@ const completionTTL = time.Minute
 
 type completeFunc = func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective)
 
-// cacheDir returns where completion lists are cached: IOTOPEN_CACHE_DIR, or
+// cacheDir returns where completion lists are cached: LYNX_CACHE_DIR, or
 // the platform's user cache directory.
 func (a *App) cacheDir() string {
 	if a.CacheDir != "" {
