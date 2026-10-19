@@ -5,6 +5,7 @@ package cli
 import (
 	"context"
 	"io"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -159,6 +160,9 @@ func TestBrowseCompletion(t *testing.T) {
 		{"cat kitchen/topic", "cat kitchen/topic_read |"},
 		{"cat 'Hall sensor/Hall lamp/topic_r|'", "cat 'Hall sensor/Hall lamp/topic_read' |"},
 		{"pw", "pwd |"},
+		{"find -type d", "find -type dev |"},
+		{"find -ma", "find -maxdepth |"},
+		{"find ha", "find 'Hall sensor/|'"},
 		{"get kit", "get 'Kitchen temperature' |"},
 	} {
 		checkCompletion(t, sh, nil, tt.line, tt.want)
@@ -204,5 +208,139 @@ func TestBrowsePrompt(t *testing.T) {
 	b.cwd = b.cwd[:1]
 	if got := b.prompt(); got != "/> " {
 		t.Errorf("root prompt = %q", got)
+	}
+}
+
+func TestBrowseRemove(t *testing.T) {
+	env := browseSetup(t)
+
+	for _, tt := range []struct {
+		line string
+		code int
+		want string
+	}{
+		{"rm no", ExitNotFound, `no item with ID or exact name "no"`},
+		{"rm 'Hall sensor'", ExitUsage, "is not empty (1 item). Use rm -r"},
+		{"rm 'No topics'", ExitUsage, "--yes"}, // no terminal to ask on
+		{"rm -x kitchen", ExitUsage, "unknown flag -x"},
+		{"rm", ExitUsage, "usage: rm"},
+		{"rm /", ExitUsage, "/ cannot be removed"},
+	} {
+		r := env.run(tt.line+"\n", "browse")
+		if r.code != tt.code || !strings.Contains(r.stderr, tt.want) {
+			t.Errorf("%s: exit %d, stderr %s", tt.line, r.code, r.stderr)
+		}
+	}
+
+	steps := []struct{ line, want string }{
+		{"rm -f 'No topics'", ""},
+		{"ls", "Hall sensor/\nKitchen temperature/\n"},
+		{"rm 'Kitchen temperature/topic_read'", ""}, // meta keys need no -f
+		{"ls 'Kitchen temperature'", ""},
+		{"cd 'Hall sensor'", ""},
+		{"rm -rf .", ""}, // the device and its function; leaves the directory
+		{"pwd", "/ACME/Main Street 1\n"},
+		{"ls", "Kitchen temperature/\n"},
+	}
+	var script, want strings.Builder
+	for _, s := range steps {
+		script.WriteString(s.line + "\n")
+		want.WriteString(s.want)
+	}
+	r := env.run(script.String(), "browse", "-e")
+	if r.code != ExitOK || r.stdout != want.String() {
+		t.Errorf("exit %d\nstdout:\n%s\nwant:\n%s\nstderr:\n%s", r.code, r.stdout, want.String(), r.stderr)
+	}
+	if r := env.mustRun("", "function", "list", "-q"); r.stdout != "1001\n" {
+		t.Errorf("functions left: %q", r.stdout)
+	}
+	if r := env.mustRun("", "device", "list", "-q"); r.stdout != "" {
+		t.Errorf("devices left: %q", r.stdout)
+	}
+}
+
+func TestBrowseEdit(t *testing.T) {
+	env := browseSetup(t)
+	var seen []string
+	env.editor = editWith(&seen,
+		func(s string) string { return strings.Replace(s, "name: Kitchen temperature", "name: Kitchen", 1) },
+		func(s string) string { return strings.Replace(s, "type: zwave", "type: zigbee", 1) })
+
+	env.mustRun("cd kitchen\nvi topic_read\nedit ~/hall\n", "browse", "-e")
+	if len(seen) != 2 || !strings.Contains(seen[0], "topic_read: obj/zwave/12/temperature") || !strings.Contains(seen[1], "type: zwave") {
+		t.Fatalf("editor saw:\n%q", seen)
+	}
+	if r := env.mustRun("", "function", "get", "1001", "-o", "json"); !strings.Contains(r.stdout, `"name": "Kitchen"`) {
+		t.Errorf("function after edit:\n%s", r.stdout)
+	}
+	if r := env.mustRun("", "device", "list"); !strings.Contains(r.stdout, "zigbee") {
+		t.Errorf("device after edit:\n%s", r.stdout)
+	}
+	if r := env.run("edit /\n", "browse"); r.code != ExitUsage || !strings.Contains(r.stderr, "cannot be edited") {
+		t.Errorf("edit /: exit %d, stderr %s", r.code, r.stderr)
+	}
+}
+
+func TestEditorOverride(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses the true and false commands")
+	}
+	t.Setenv("VISUAL", "")
+	t.Setenv("EDITOR", "true")
+	a := &App{editor: []string{"false"}}
+	// "false" fails, so the override is what ran.
+	if err := a.runEditor(t.TempDir() + "/x"); err == nil || !strings.Contains(err.Error(), `"false"`) {
+		t.Errorf("runEditor with override: %v", err)
+	}
+	a.editor = nil
+	if err := a.runEditor(t.TempDir() + "/x"); err != nil {
+		t.Errorf("runEditor with $EDITOR=true: %v", err)
+	}
+}
+
+func TestBrowseFind(t *testing.T) {
+	env := browseSetup(t)
+
+	for _, tt := range []struct{ line, want string }{
+		{"find", `.
+./Hall sensor
+./Hall sensor/Hall lamp
+./Hall sensor/Hall lamp/topic_read
+./Hall sensor/Hall lamp/topic_write
+./Kitchen temperature
+./Kitchen temperature/topic_read
+./No topics
+`},
+		{"find / -type fn", `/ACME/Main Street 1/Hall sensor/Hall lamp
+/ACME/Main Street 1/Kitchen temperature
+/ACME/Main Street 1/No topics
+`},
+		{"find / -type inst -name '*street*'", "/ACME/Main Street 1\n/ACME/Main Street 2\n"},
+		{"find -type dev,fn -meta topic_read", "./Hall sensor/Hall lamp\n./Kitchen temperature\n"},
+		{"find / -maxdepth 1", "/\n/ACME\n"},
+		{"find /acme/stock 'hall sensor' -type org,dev", "/acme/stock\n/acme/stock/Stockholm South\nhall sensor\n"},
+		{"find -type meta -name topic_w*", "./Hall sensor/Hall lamp/topic_write\n"},
+	} {
+		r := env.run(tt.line+"\n", "browse")
+		if r.code != ExitOK || r.stdout != tt.want {
+			t.Errorf("%s: exit %d\nstdout:\n%s\nwant:\n%s\nstderr: %s", tt.line, r.code, r.stdout, tt.want, r.stderr)
+		}
+	}
+
+	for _, tt := range []struct {
+		line string
+		code int
+		want string
+	}{
+		{"find -type x", ExitUsage, `invalid -type "x"`},
+		{"find -name", ExitUsage, "-name needs a value"},
+		{"find -depth 2", ExitUsage, "unknown flag -depth"},
+		{"find -maxdepth -1", ExitUsage, "invalid -maxdepth"},
+		{"find nowhere", ExitNotFound, `no item matches "nowhere"`},
+	} {
+		r := env.run(tt.line+"\n", "browse")
+		if r.code != tt.code || !strings.Contains(r.stderr, tt.want) {
+			t.Errorf("%s: exit %d, stderr %s", tt.line, r.code, r.stderr)
+		}
 	}
 }

@@ -57,6 +57,8 @@ type App struct {
 	stdin *bufio.Reader
 	// inShell is set for commands run from the interactive shell.
 	inShell bool
+	// editor, if set, replaces $VISUAL and $EDITOR (browse's vi and nano).
+	editor []string
 }
 
 // session is what a command needs to talk to the API.

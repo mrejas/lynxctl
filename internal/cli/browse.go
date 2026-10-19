@@ -4,10 +4,13 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -41,6 +44,14 @@ Commands:
   head [-n lines] [path]   show the oldest values (default: 10 lines)
   tail [-n lines] [-f] [path]
                            show the latest values (-f: then follow new ones)
+  rm [-r] [-f] path...     remove objects or meta keys (-r: with their
+                           contents, -f: without asking); give the ID or
+                           the exact name
+  edit [path]              edit an object in $EDITOR (vi, vim and nano
+                           open that editor); on a meta key, its function
+  find [path...] [-name pattern] [-type org|inst|dev|fn|meta]
+       [-meta key=value] [-maxdepth N]
+                           find objects below a directory (default: .)
   pwd                      print the current directory
   help                     show this help
   exit, quit, Ctrl-D       leave
@@ -131,6 +142,8 @@ type browser struct {
 	cwd []node
 
 	fetched time.Time
+	// pinned keeps what has been fetched from expiring, during a find.
+	pinned  bool
 	orgs    []api.JSONObject
 	insts   []api.Installation
 	objects map[int64]*installationObjects
@@ -159,7 +172,7 @@ func (b *browser) forget() {
 }
 
 func (b *browser) expire() {
-	if time.Since(b.fetched) > browseTTL {
+	if !b.pinned && time.Since(b.fetched) > browseTTL {
 		b.forget()
 		b.fetched = time.Now()
 	}
@@ -207,6 +220,18 @@ func (b *browser) loadObjects(ctx context.Context, inst int64) (*installationObj
 	if err != nil {
 		return nil, err
 	}
+	o, err := fetchObjects(ctx, s, inst)
+	if err != nil {
+		return nil, err
+	}
+	if b.objects == nil {
+		b.objects = map[int64]*installationObjects{}
+	}
+	b.objects[inst] = o
+	return o, nil
+}
+
+func fetchObjects(ctx context.Context, s *session, inst int64) (*installationObjects, error) {
 	devices, err := s.Client.ListObjects(ctx, api.DeviceX, inst, nil)
 	if err != nil {
 		return nil, err
@@ -215,12 +240,54 @@ func (b *browser) loadObjects(ctx context.Context, inst int64) (*installationObj
 	if err != nil {
 		return nil, err
 	}
+	return &installationObjects{devices: devices, functions: functions}, nil
+}
+
+// prefetchWorkers is how many installations find fetches at a time.
+const prefetchWorkers = 8
+
+// prefetch fetches the devices and functions of several installations in
+// parallel. Errors are left for loadObjects to report.
+func (b *browser) prefetch(ctx context.Context, insts []int64) {
+	b.expire()
+	var todo []int64
+	for _, id := range insts {
+		if b.objects[id] == nil {
+			todo = append(todo, id)
+		}
+	}
+	if len(todo) < 2 {
+		return
+	}
+	s, err := b.session()
+	if err != nil {
+		return
+	}
+	results := make([]*installationObjects, len(todo))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for range min(prefetchWorkers, len(todo)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				results[i], _ = fetchObjects(ctx, s, todo[i])
+			}
+		}()
+	}
+	for i := range todo {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
 	if b.objects == nil {
 		b.objects = map[int64]*installationObjects{}
 	}
-	o := &installationObjects{devices: devices, functions: functions}
-	b.objects[inst] = o
-	return o, nil
+	for i, o := range results {
+		if o != nil {
+			b.objects[todo[i]] = o
+		}
+	}
 }
 
 func orgNodeOf(o api.JSONObject) node {
@@ -376,6 +443,12 @@ func (b *browser) home(ctx context.Context) []node {
 // resolvePath resolves a path relative to the current directory. Every
 // element but the last must be a directory.
 func (b *browser) resolvePath(ctx context.Context, p string) ([]node, error) {
+	return b.resolvePathExact(ctx, p, false)
+}
+
+// resolvePathExact is resolvePath, but with exactLast set, the last element
+// must be an ID or an exact name, as for destructive commands.
+func (b *browser) resolvePathExact(ctx context.Context, p string, exactLast bool) ([]node, error) {
 	path := append([]node{}, b.cwd...)
 	switch {
 	case strings.HasPrefix(p, "/"):
@@ -384,7 +457,14 @@ func (b *browser) resolvePath(ctx context.Context, p string) ([]node, error) {
 		path = b.home(ctx)
 		p = strings.TrimPrefix(p, "~")
 	}
-	for _, elem := range strings.Split(p, "/") {
+	elems := strings.Split(p, "/")
+	last := -1
+	for i, elem := range elems {
+		if elem != "" && elem != "." && elem != ".." {
+			last = i
+		}
+	}
+	for i, elem := range elems {
 		switch elem {
 		case "", ".":
 			continue
@@ -404,7 +484,7 @@ func (b *browser) resolvePath(ctx context.Context, p string) ([]node, error) {
 		}
 		n, err := resolve.Find("item", elem, list, func(n node) resolve.Key {
 			return resolve.Key{ID: n.id, Name: n.label()}
-		}, resolve.Options{})
+		}, resolve.Options{Exact: exactLast && i == last})
 		if err != nil {
 			return nil, fmt.Errorf("%w (in %s)", err, pathString(path))
 		}
@@ -458,8 +538,18 @@ func (b *browser) run(ctx context.Context, args []string, interactive bool) int 
 		err = b.cd(ctx, args[1:])
 	case "ls":
 		err = b.ls(ctx, args[1:])
+	case "find":
+		err = b.find(ctx, args[1:])
 	case "cat", "head", "tail":
 		return b.show(ctx, args, interactive)
+	case "rm":
+		code := b.rm(ctx, args[1:], interactive)
+		b.forget()
+		return code
+	case "edit", "vi", "vim", "nano":
+		code := b.edit(ctx, args, interactive)
+		b.forget()
+		return code
 	case "pwd":
 		if len(args) > 1 {
 			err = usageErrorf("pwd takes no arguments")
@@ -741,6 +831,335 @@ func valueSelection(n node, path []node) ([]string, error) {
 	return nil, usageErrorf("%s has no values", pathString(path))
 }
 
+// rm removes objects or meta keys. Directories that are not empty need -r,
+// and -f skips the confirmation. The last element of each path must be an
+// ID or an exact name.
+func (b *browser) rm(ctx context.Context, args []string, interactive bool) int {
+	a := b.sh.app
+	fail := func(err error) int {
+		fmt.Fprintf(a.Err, "Error: rm: %s\n", a.errorMessage(err))
+		return exitCode(err)
+	}
+	recursive, force := false, false
+	var paths []string
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "-") || arg == "-" {
+			paths = append(paths, arg)
+			continue
+		}
+		for _, c := range strings.TrimPrefix(arg, "-") {
+			switch c {
+			case 'r', 'R':
+				recursive = true
+			case 'f':
+				force = true
+			default:
+				return fail(usageErrorf("unknown flag %s (usage: rm [-r] [-f] path...)", arg))
+			}
+		}
+	}
+	if len(paths) == 0 {
+		return fail(usageErrorf("usage: rm [-r] [-f] path..."))
+	}
+
+	code := ExitOK
+	for _, p := range paths {
+		path, err := b.resolvePathExact(ctx, p, true)
+		if err != nil {
+			code = fail(err)
+			continue
+		}
+		cmdline, err := b.rmCommand(ctx, path, recursive)
+		if err != nil {
+			code = fail(err)
+			continue
+		}
+		if force {
+			cmdline = append(cmdline, "--yes")
+		}
+		if c := b.sh.runCLI(ctx, cmdline, interactive); c != ExitOK {
+			code = c
+			continue
+		}
+		b.forget()
+		// Leave a directory that no longer exists.
+		if n := len(path); n <= len(b.cwd) && samePath(path, b.cwd[:n]) {
+			b.cwd = append([]node{}, path[:n-1]...)
+		}
+	}
+	return code
+}
+
+// rmCommand returns the CLI command that removes the last node of path.
+func (b *browser) rmCommand(ctx context.Context, path []node, recursive bool) ([]string, error) {
+	n := path[len(path)-1]
+	id := strconv.FormatInt(n.id, 10)
+	inst := "--installation=" + strconv.FormatInt(n.installation, 10)
+	if n.kind == metaNode {
+		fn := path[len(path)-2]
+		return []string{"function", "meta", "unset", strconv.FormatInt(fn.id, 10), n.name, inst}, nil
+	}
+	if n.kind == rootNode {
+		return nil, usageErrorf("/ cannot be removed")
+	}
+	children := 0
+	if n.kind != functionNode {
+		list, err := b.children(ctx, n)
+		if err != nil {
+			return nil, err
+		}
+		children = len(list)
+	}
+	if children > 0 && !recursive {
+		return nil, usageErrorf("%s is not empty (%d %s). Use rm -r to remove it with its contents",
+			pathString(path), children, plural(children, "item", "items"))
+	}
+	switch n.kind {
+	case orgNode:
+		cmdline := []string{"organization", "delete", id}
+		if children > 0 {
+			cmdline = append(cmdline, "--force")
+		}
+		return cmdline, nil
+	case installationNode:
+		return []string{"installation", "delete", id}, nil
+	case deviceNode:
+		cmdline := []string{"device", "delete", id, inst}
+		if children > 0 {
+			cmdline = append(cmdline, "--cascade")
+		}
+		return cmdline, nil
+	}
+	return []string{"function", "delete", id, inst}, nil
+}
+
+func samePath(p, q []node) bool {
+	if len(p) != len(q) {
+		return false
+	}
+	for i := range p {
+		if p[i].kind != q[i].kind || p[i].id != q[i].id || p[i].name != q[i].name {
+			return false
+		}
+	}
+	return true
+}
+
+// edit opens an object in an editor with the edit command of its kind. On a
+// meta key, the function it belongs to is edited. vi, vim and nano use that
+// editor; edit uses $VISUAL or $EDITOR.
+func (b *browser) edit(ctx context.Context, args []string, interactive bool) int {
+	a := b.sh.app
+	fail := func(err error) int {
+		fmt.Fprintf(a.Err, "Error: %s: %s\n", args[0], a.errorMessage(err))
+		return exitCode(err)
+	}
+	path := b.cwd
+	switch len(args) {
+	case 1:
+	case 2:
+		var err error
+		if path, err = b.resolvePath(ctx, args[1]); err != nil {
+			return fail(err)
+		}
+	default:
+		return fail(usageErrorf("usage: %s [path]", args[0]))
+	}
+	if path[len(path)-1].kind == metaNode {
+		path = path[:len(path)-1]
+	}
+	n := path[len(path)-1]
+	id := strconv.FormatInt(n.id, 10)
+	inst := "--installation=" + strconv.FormatInt(n.installation, 10)
+	var cmdline []string
+	switch n.kind {
+	case orgNode:
+		cmdline = []string{"organization", "edit", id}
+	case installationNode:
+		cmdline = []string{"installation", "edit", id}
+	case deviceNode:
+		cmdline = []string{"device", "edit", id, inst}
+	case functionNode:
+		cmdline = []string{"function", "edit", id, inst}
+	default:
+		return fail(usageErrorf("/ cannot be edited"))
+	}
+	if args[0] != "edit" {
+		a.editor = []string{args[0]}
+		defer func() { a.editor = nil }()
+	}
+	return b.sh.runCLI(ctx, cmdline, interactive)
+}
+
+// findKinds are the values of find -type.
+var findKinds = []struct {
+	names []string
+	kind  nodeKind
+}{
+	{[]string{"org", "organization"}, orgNode},
+	{[]string{"inst", "installation"}, installationNode},
+	{[]string{"dev", "device"}, deviceNode},
+	{[]string{"fn", "func", "function"}, functionNode},
+	{[]string{"meta"}, metaNode},
+}
+
+// findUsage is shown for invalid find arguments.
+const findUsage = "usage: find [path...] [-name pattern] [-type org|inst|dev|fn|meta] [-meta key=value] [-maxdepth N]"
+
+// find lists everything below the given paths (default: the current
+// directory) that matches the filters, like find(1).
+func (b *browser) find(ctx context.Context, args []string) error {
+	var paths, metaFlags []string
+	var name string
+	types := map[nodeKind]bool{}
+	maxDepth := -1
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "-") {
+			paths = append(paths, arg)
+			continue
+		}
+		if i+1 >= len(args) {
+			return usageErrorf("%s needs a value (%s)", arg, findUsage)
+		}
+		i++
+		value := args[i]
+		switch arg {
+		case "-name", "-iname":
+			name = value
+		case "-type":
+			for _, t := range strings.Split(value, ",") {
+				found := false
+				for _, k := range findKinds {
+					if slices.Contains(k.names, strings.ToLower(t)) {
+						types[k.kind], found = true, true
+					}
+				}
+				if !found {
+					return usageErrorf("invalid -type %q (use org, inst, dev, fn or meta)", t)
+				}
+			}
+		case "-meta":
+			metaFlags = append(metaFlags, value)
+		case "-maxdepth":
+			n, err := strconv.Atoi(value)
+			if err != nil || n < 0 {
+				return usageErrorf("invalid -maxdepth %q", value)
+			}
+			maxDepth = n
+		default:
+			return usageErrorf("unknown flag %s (%s)", arg, findUsage)
+		}
+	}
+	pairs, err := metaPairs(metaFlags)
+	if err != nil {
+		return err
+	}
+	if len(paths) == 0 {
+		paths = []string{"."}
+	}
+
+	matches := func(n node) bool {
+		if len(types) > 0 && !types[n.kind] {
+			return false
+		}
+		if name != "" && !globMatch(name, n.label()) {
+			return false
+		}
+		if len(pairs) > 0 {
+			metas := b.metaOf(n)
+			return metas != nil && metaMatches(pairs, metas...)
+		}
+		return true
+	}
+
+	b.expire()
+	b.pinned = true
+	defer func() { b.pinned = false }()
+
+	out, failed := b.sh.app.Out, false
+	var walk func(n node, shown string, depth int)
+	walk = func(n node, shown string, depth int) {
+		if ctx.Err() != nil {
+			return
+		}
+		if matches(n) {
+			fmt.Fprintln(out, shown)
+		}
+		if !n.isDir() || depth == maxDepth {
+			return
+		}
+		list, err := b.children(ctx, n)
+		if err != nil {
+			fmt.Fprintf(b.sh.app.Err, "Error: find: %s: %s\n", shown, b.sh.app.errorMessage(err))
+			failed = true
+			return
+		}
+		var insts []int64
+		for _, c := range list {
+			if c.kind == installationNode && depth+1 != maxDepth {
+				insts = append(insts, c.id)
+			}
+		}
+		b.prefetch(ctx, insts)
+		prefix := shown
+		if !strings.HasSuffix(prefix, "/") {
+			prefix += "/"
+		}
+		for _, c := range list {
+			walk(c, prefix+colorize(c.label(), nodeColors[c.kind], b.color), depth+1)
+		}
+	}
+	for _, p := range paths {
+		path, err := b.resolvePath(ctx, p)
+		if err != nil {
+			return err
+		}
+		walk(path[len(path)-1], p, 0)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if failed {
+		return &exitError{code: ExitError, err: errors.New("some directories could not be read"), silent: true}
+	}
+	return nil
+}
+
+// metaOf returns the meta keys of a node, or nil if it has none to filter
+// on.
+func (b *browser) metaOf(n node) []api.Meta {
+	switch n.kind {
+	case orgNode:
+		for _, o := range b.orgs {
+			if num(o, "id") == n.id {
+				return []api.Meta{toMeta(o["meta"]), toMeta(o["protected_meta"])}
+			}
+		}
+	case installationNode:
+		for _, i := range b.insts {
+			if i.ID == n.id {
+				return []api.Meta{i.Meta}
+			}
+		}
+	case deviceNode, functionNode:
+		objs := b.objects[n.installation]
+		if objs == nil {
+			return nil
+		}
+		list := objs.functions
+		if n.kind == deviceNode {
+			list = objs.devices
+		}
+		for _, o := range list {
+			if o.ID == n.id {
+				return []api.Meta{o.Meta, o.ProtectedMeta}
+			}
+		}
+	}
+	return nil
+}
+
 // browseCommands are the browser's own commands.
 var browseCommands = []candidate{
 	{"cd", "Change directory"},
@@ -748,6 +1167,11 @@ var browseCommands = []candidate{
 	{"cat", "Show an object, or the log of a topic"},
 	{"head", "Show the oldest values"},
 	{"tail", "Show the latest values (-f: and follow)"},
+	{"rm", "Remove an object or a meta key (-r: with contents, -f: without asking)"},
+	{"edit", "Edit an object in $EDITOR"},
+	{"vi", "Edit an object in vi"},
+	{"nano", "Edit an object in nano"},
+	{"find", "Find objects below a directory"},
 	{"pwd", "Print the current directory"},
 	{"help", "Show help"},
 	{"exit", "Leave"},
@@ -767,11 +1191,26 @@ func (b *browser) candidates(args []string, toComplete string) ([]candidate, cob
 		return cands, cobra.ShellCompDirectiveNoFileComp
 	}
 	switch args[0] {
-	case "cd", "ls", "cat", "head", "tail":
+	case "cd", "ls", "cat", "head", "tail", "rm", "edit", "vi", "vim", "nano":
 		if strings.HasPrefix(toComplete, "-") {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 		return b.pathCandidates(toComplete, args[0] == "cd"), cobra.ShellCompDirectiveNoFileComp
+	case "find":
+		switch {
+		case args[len(args)-1] == "-type":
+			var kinds []candidate
+			for _, k := range findKinds {
+				kinds = append(kinds, candidate{value: k.names[0], desc: nodeKindNames[k.kind]})
+			}
+			return kinds, cobra.ShellCompDirectiveNoFileComp
+		case slices.Contains([]string{"-name", "-iname", "-meta", "-maxdepth"}, args[len(args)-1]):
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		case strings.HasPrefix(toComplete, "-"):
+			return []candidate{{"-name", "match the name (* is a wildcard)"}, {"-type", "org, inst, dev, fn or meta"},
+				{"-meta", "match a meta key=value"}, {"-maxdepth", "levels to descend"}}, cobra.ShellCompDirectiveNoFileComp
+		}
+		return b.pathCandidates(toComplete, true), cobra.ShellCompDirectiveNoFileComp
 	case "pwd", "help":
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

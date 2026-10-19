@@ -572,6 +572,23 @@ as directories:
   `ls -l` names the kind. Symbols (emoji) were rejected: their width varies
   between terminals, which breaks alignment. Colors follow the general
   rule: only when stdout is a terminal and `NO_COLOR` is not set.
+- `rm [-r] [-f] path...` removes objects, or meta keys of functions. As in
+  Unix, a directory that is not empty needs `-r`: a device is then deleted
+  with `--cascade`, an organization with `--force`. `-f` passes `--yes`.
+  Like other destructive commands, the last element of the path must be an
+  ID or an exact name. Removing the current directory (or a parent) moves
+  to the parent of what was removed.
+- `find [path...] [-name pattern] [-type org|inst|dev|fn|meta] [-meta
+  key=value] [-maxdepth N]` walks the tree like find(1) and prints matching
+  paths. `-name` uses `*` wildcards and ignores case, like other filters.
+  `-type` takes words, since find's `f` and `d` would clash with function
+  and device; several can be given separated by commas. The devices and
+  functions of the installations in a directory are fetched 8 at a time,
+  and nothing expires from the cache during a find. Directories that cannot
+  be read are reported and skipped.
+- `edit [path]` opens an object with the `edit` command of its kind; on a
+  meta key, the function it belongs to. `vi`, `vim` and `nano` do the same
+  with that editor instead of `$VISUAL`/`$EDITOR`.
 - Path elements are names, IDs or unique parts of names, resolved like
   other references. Names containing `/` must be given by ID, and Tab
   completes them as IDs.

@@ -343,6 +343,7 @@ func (a *App) child() *App {
 		CacheDir:   a.CacheDir,
 		Subscribe:  a.Subscribe,
 		inShell:    true,
+		editor:     a.editor,
 	}
 }
 

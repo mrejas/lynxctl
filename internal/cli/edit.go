@@ -31,6 +31,9 @@ func (a *App) runEditor(path string) error {
 		return a.RunEditor(path)
 	}
 	argv := append(editorCommand(), path)
+	if len(a.editor) > 0 {
+		argv = append(append([]string{}, a.editor...), path)
+	}
 	cmd := exec.Command(argv[0], argv[1:]...)
 	// The editor needs the real terminal, not whatever a.In/a.Out wrap.
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
