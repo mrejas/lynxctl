@@ -462,7 +462,9 @@ func quoteWord(s string) string {
 // quoteParts quotes s like quoteWord, but returns the closing quote (if
 // any) separately, so that completion can put the cursor before it.
 func quoteParts(s string) (body, closer string) {
-	if s != "" && !strings.ContainsAny(s, " \t'\"\\#") {
+	// A backslash only escapes whitespace, quotes and backslashes, so
+	// Windows paths need no quotes unless they contain one of those.
+	if s != "" && !strings.ContainsAny(s, " \t'\"") && !strings.HasPrefix(s, "#") && !strings.Contains(s, `\\`) {
 		return s, ""
 	}
 	if !strings.Contains(s, "'") {

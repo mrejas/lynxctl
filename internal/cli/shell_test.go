@@ -42,7 +42,7 @@ func TestSplitWords(t *testing.T) {
 }
 
 func TestQuoteWord(t *testing.T) {
-	for _, s := range []string{"plain", "Hall lamp", `it's "x"`, `back\slash`, "#tag", ""} {
+	for _, s := range []string{"plain", "Hall lamp", `it's "x"`, `back\slash`, "#tag", "a#b", "", `C:\Temp\x.png`, `\\server\share`, `C:\My files\`} {
 		words, open := splitWords("cmd " + quoteWord(s))
 		if open || len(words) != 2 || words[1].text != s {
 			t.Errorf("quoteWord(%q) does not round-trip: %q", s, quoteWord(s))
@@ -50,6 +50,12 @@ func TestQuoteWord(t *testing.T) {
 	}
 	if body, closer := quoteParts("Hall l"); body != "'Hall l" || closer != "'" {
 		t.Errorf("quoteParts = %q, %q", body, closer)
+	}
+	// Windows paths are completed without quotes when they can be.
+	for s, want := range map[string]string{`C:\Temp\x.png`: `C:\Temp\x.png`, `back\slash`: `back\slash`, "a#b": "a#b"} {
+		if got := quoteWord(s); got != want {
+			t.Errorf("quoteWord(%q) = %q, want %q", s, got, want)
+		}
 	}
 }
 
