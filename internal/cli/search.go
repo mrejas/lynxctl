@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -83,16 +84,21 @@ everything matching the filters is listed.`,
 					results = append(results, o)
 				}
 			}
+			names := a.installationNames(ctx, s, results)
 			rows := output.Rows{Columns: []output.Column{
 				{Header: "type"}, {Header: "id"}, {Header: "name"}, {Header: "installation"},
 				{Header: "matches", Wide: true},
 			}, IDColumn: 1}
 			for _, o := range results {
-				inst := str(o["installationID"])
+				var inst string
 				if str(o["type"]) == "installation" {
-					inst = "client ID " + str(o["clientID"])
+					inst = "client ID " + strOf(o, "client_id", "clientID")
+				} else if id := strOf(o, "installation_id", "installationID"); names[id] != "" {
+					inst = names[id] + " (" + id + ")"
+				} else {
+					inst = id
 				}
-				rows.Rows = append(rows.Rows, []string{str(o["type"]), str(o["id"]), str(o["name"]), inst, formatMatches(o["metaMatches"])})
+				rows.Rows = append(rows.Rows, []string{str(o["type"]), str(o["id"]), str(o["name"]), inst, formatMatches(firstOf(o, "meta_matches", "metaMatches"))})
 			}
 			if err := pr.List(results, rows); err != nil {
 				return err
@@ -111,6 +117,48 @@ everything matching the filters is listed.`,
 		return searchTypes, cobra.ShellCompDirectiveNoFileComp
 	})
 	return cmd
+}
+
+// The server answers in snake_case like the rest of the API, while the
+// docs show camelCase; both are accepted.
+
+// firstOf returns the first of keys that o has.
+func firstOf(o api.JSONObject, keys ...string) any {
+	for _, k := range keys {
+		if v, ok := o[k]; ok && v != nil {
+			return v
+		}
+	}
+	return nil
+}
+
+// strOf returns the first of keys that o has, as a string.
+func strOf(o api.JSONObject, keys ...string) string {
+	return str(firstOf(o, keys...))
+}
+
+// installationNames maps the installation IDs of device and function
+// results to names. Lookup errors only leave the names out.
+func (a *App) installationNames(ctx context.Context, s *session, results []api.JSONObject) map[string]string {
+	names := map[string]string{}
+	need := false
+	for _, o := range results {
+		need = need || str(o["type"]) != "installation"
+	}
+	if !need {
+		return names
+	}
+	infos, err := s.Client.InstallationInfos(ctx)
+	if err != nil {
+		return names
+	}
+	if all, err := s.Client.ListInstallations(ctx, nil); err == nil {
+		infos = mergeInstallations(infos, all)
+	}
+	for _, i := range infos {
+		names[strconv.FormatInt(i.ID, 10)] = i.Name
+	}
+	return names
 }
 
 func formatMatches(v any) string {

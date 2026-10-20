@@ -246,9 +246,14 @@ func TestFiles(t *testing.T) {
 
 func TestSearch(t *testing.T) {
 	_, env := valueSetup(t)
-	r := env.mustRun("", "search", "kitchen")
-	if !strings.Contains(r.stdout, "function") || !strings.Contains(r.stdout, "Kitchen temperature") {
-		t.Errorf("search kitchen:\n%s", r.stdout)
+	r := env.mustRun("", "search", "kitchen", "-o", "wide")
+	for _, want := range []string{"function", "Kitchen temperature", "Main Street 1 (10)", "name=Kitchen temperature"} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("search kitchen lacks %q:\n%s", want, r.stdout)
+		}
+	}
+	if r := env.mustRun("", "search", "main", "--type", "installation"); !strings.Contains(r.stdout, "client ID 1010") {
+		t.Errorf("search main --type installation:\n%s", r.stdout)
 	}
 	if r := env.mustRun("", "search", "main", "--type", "installations", "-q"); r.stdout != "10\n11\n" {
 		t.Errorf("search main --type installations -q = %q", r.stdout)

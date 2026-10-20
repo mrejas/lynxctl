@@ -94,12 +94,26 @@ was **verified** against the server or is **from the docs only**.
 
 ### Search
 
-20. **Different conventions from the rest of the API.** The search response
-    uses camelCase (`clientID`, `installationID`, `organizationID`,
-    `metaMatches`) where everything else uses snake_case, returns `clientID`
-    as a string where it is a number elsewhere, filters metadata with
-    `metadata.key=value` where lists use `key=value`, and returns errors as
-    `{"error": ...}` instead of `{"message": ...}`. *Docs only.*
+20. **The search response does not match the docs.** In Global Search
+    (`GET /api/v3beta/search`, <https://lynx.iotopen.se/api-doc/#global-search>),
+    both the 200 example response and the Response Schema
+    (`#global-search-responseschema`) use camelCase, but the server answers
+    in snake_case like the rest of the API:
+
+    | Docs             | Server                         |
+    |------------------|--------------------------------|
+    | `installationID` | `installation_id`              |
+    | `metaMatches`    | `meta_matches`                 |
+    | `allMetadata`    | `metadata`                     |
+    | `clientID`       | `client_id`                    |
+    | `organizationID` | `organization_id`              |
+
+    *Verified* on lynx-dev with a device and an installation result. As
+    documented, `client_id` is a string (`"5"`) here, while it is a number
+    everywhere else in the API (`organization_id` is a number). The docs
+    also filter metadata with `metadata.key=value` where lists use
+    `key=value`, and give errors as `{"error": ...}` instead of
+    `{"message": ...}`. *Docs only.* lynxctl accepts both spellings.
 
 ### Schedules
 

@@ -414,7 +414,7 @@ func (f *fakeServer) search(w http.ResponseWriter, r *http.Request) {
 	if want("installation") {
 		for _, inst := range f.sortedInstallations() {
 			if match(inst.Name, inst.Meta) {
-				results = append(results, map[string]any{"type": "installation", "id": inst.ID, "name": inst.Name, "clientID": strconv.FormatInt(inst.ClientID, 10)})
+				results = append(results, map[string]any{"type": "installation", "id": inst.ID, "name": inst.Name, "client_id": inst.ClientID})
 			}
 		}
 	}
@@ -424,7 +424,8 @@ func (f *fakeServer) search(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, o := range f.sortedObjects(kind) {
 			if match(o.Name(), o.Meta) {
-				results = append(results, map[string]any{"type": t, "id": o.ID, "name": o.Name(), "installationID": o.InstallationID})
+				results = append(results, map[string]any{"type": t, "id": o.ID, "name": o.Name(), "installation_id": o.InstallationID,
+					"meta_matches": map[string]any{"name": o.Name()}})
 			}
 		}
 	}
