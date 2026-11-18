@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -446,14 +447,29 @@ func (a *App) logout(ctx context.Context, name string) error {
 }
 
 func (a *App) newWhoamiCommand() *cobra.Command {
-	return &cobra.Command{
+	var key string
+	cmd := &cobra.Command{
 		Use:   "whoami",
 		Short: "Show the logged in user, server and current installation",
-		Args:  usageArgs(cobra.NoArgs),
+		Long: `Show the logged in user, server and current installation.
+
+With --key, show the user an API key (for example an integration key)
+belongs to instead. The key is checked against the active profile's server
+and is not stored. Pass "-" to read it from the prompt or stdin, which keeps
+it out of the shell history.`,
+		Example: fmt.Sprintf(`  %[1]s whoami
+  %[1]s whoami --key 0123456789abcdef
+  echo "$KEY" | %[1]s whoami --key -`, a.Name),
+		Args: usageArgs(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("key") {
+				return a.whoamiKey(cmd.Context(), key)
+			}
 			return a.whoami(cmd.Context())
 		},
 	}
+	cmd.Flags().StringVar(&key, "key", "", `show the user an API key belongs to ("-" to read it from the prompt or stdin)`)
+	return cmd
 }
 
 func (a *App) whoami(ctx context.Context) error {
@@ -499,6 +515,55 @@ func (a *App) whoami(ctx context.Context) error {
 	})
 }
 
+// whoamiKey shows the user that key belongs to, on the active profile's
+// server (or LYNX_URL). No login is needed.
+func (a *App) whoamiKey(ctx context.Context, key string) error {
+	pr, err := a.printer()
+	if err != nil {
+		return err
+	}
+	if key == "-" {
+		if key, err = a.promptSecret("API key: "); err != nil {
+			return err
+		}
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return usageErrorf("no API key given")
+	}
+	name, err := a.profileName()
+	if err != nil {
+		return err
+	}
+	cfg, err := a.config()
+	if err != nil {
+		return err
+	}
+	baseURL, err := serverURL(cfg.Profile(name))
+	if err != nil {
+		return err
+	}
+	me, err := a.newClient(baseURL, key).Me(ctx)
+	if err != nil {
+		if api.IsStatus(err, http.StatusUnauthorized) {
+			return authErrorf("the API key was rejected by %s", baseURL)
+		}
+		return err
+	}
+
+	data := struct {
+		Server string    `json:"server"`
+		User   *api.User `json:"user"`
+	}{baseURL, me}
+
+	return pr.Details(data, me.Email, []output.Field{
+		{Label: "User", Value: userLabel(me)},
+		{Label: "User ID", Value: strconv.FormatInt(me.ID, 10)},
+		{Label: "Organizations", Value: joinIDs(me.Organisations)},
+		{Label: "Server", Value: baseURL},
+	})
+}
+
 // formatInstallation gives e.g. `Home (ID 42, client ID 1010)`.
 func formatInstallation(inst *config.Installation, name string) string {
 	if inst == nil {
@@ -512,4 +577,16 @@ func formatInstallation(inst *config.Installation, name string) string {
 		return ids
 	}
 	return fmt.Sprintf("%s (%s)", inst.Name, ids)
+}
+
+// joinIDs gives e.g. "7, 12", or "none".
+func joinIDs(ids []int64) string {
+	if len(ids) == 0 {
+		return "none"
+	}
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = strconv.FormatInt(id, 10)
+	}
+	return strings.Join(parts, ", ")
 }

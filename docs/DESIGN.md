@@ -155,7 +155,9 @@ forces the file store.
   key is only removed locally, because calling `DELETE /api/v2/auth` with it
   would revoke it on the server. The profile itself is kept.
 - `whoami` calls `GET /api/v2/user/me` and shows the user, profile and
-  server.
+  server. `whoami --key <key>` does the same with a given API key (e.g. an
+  integration key) against the active profile's server, without logging in
+  or storing it; `--key -` reads the key from the prompt or stdin.
 - Passwords are never accepted as command line arguments, because those end
   up in shell history and process lists. Use the prompt or `--password-stdin`.
 

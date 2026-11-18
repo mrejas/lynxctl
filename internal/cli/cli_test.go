@@ -201,6 +201,31 @@ func TestWhoami(t *testing.T) {
 	}
 }
 
+func TestWhoamiKey(t *testing.T) {
+	srv := newFakeServer(t)
+	env := newTestEnv(t)
+	t.Setenv("LYNX_URL", srv.URL)
+	// No login needed: the key is checked on its own.
+	r := env.mustRun("", "whoami", "--key", "api-key-1")
+	for _, want := range []string{"Jane Doe <jane@example.com>", "User ID:", "7", "Organizations:", "2", srv.URL} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("whoami --key output lacks %q:\n%s", want, r.stdout)
+		}
+	}
+	if r := env.mustRun("api-key-1\n", "whoami", "--key", "-", "-q"); r.stdout != "jane@example.com\n" {
+		t.Errorf("key from stdin: %q", r.stdout)
+	}
+	if r := env.run("", "whoami", "--key", "wrong"); r.code != ExitAuth || !strings.Contains(r.stderr, "rejected") {
+		t.Errorf("bad key: exit %d, stderr %s", r.code, r.stderr)
+	}
+	if r := env.run("", "whoami", "--key", ""); r.code != ExitUsage {
+		t.Errorf("empty key: exit %d", r.code)
+	}
+	if _, err := env.secrets.Get(srv.host()); err == nil {
+		t.Error("whoami --key stored the key")
+	}
+}
+
 func TestEnvironmentAPIKey(t *testing.T) {
 	srv := newFakeServer(t)
 	env := newTestEnv(t)
