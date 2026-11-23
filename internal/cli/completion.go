@@ -16,8 +16,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mrejas/lynx-cli/internal/api"
-	"github.com/mrejas/lynx-cli/internal/config"
+	"github.com/mrejas/lynxctl/internal/api"
+	"github.com/mrejas/lynxctl/internal/config"
 )
 
 // completionTTL is how long lists fetched for shell completion are reused.

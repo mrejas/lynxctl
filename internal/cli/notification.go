@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mrejas/lynx-cli/internal/api"
+	"github.com/mrejas/lynxctl/internal/api"
 )
 
 func (a *App) messageResource() *resource {

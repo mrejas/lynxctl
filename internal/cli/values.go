@@ -20,11 +20,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mrejas/lynx-cli/internal/api"
-	"github.com/mrejas/lynx-cli/internal/config"
-	"github.com/mrejas/lynx-cli/internal/mqtt"
-	"github.com/mrejas/lynx-cli/internal/output"
-	"github.com/mrejas/lynx-cli/internal/resolve"
+	"github.com/mrejas/lynxctl/internal/api"
+	"github.com/mrejas/lynxctl/internal/config"
+	"github.com/mrejas/lynxctl/internal/mqtt"
+	"github.com/mrejas/lynxctl/internal/output"
+	"github.com/mrejas/lynxctl/internal/resolve"
 )
 
 // valueView is the JSON/YAML representation of a value in get, log and watch.

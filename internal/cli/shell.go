@@ -18,7 +18,7 @@ import (
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
 
-	"github.com/mrejas/lynx-cli/internal/config"
+	"github.com/mrejas/lynxctl/internal/config"
 )
 
 // historySize is how many lines the shell keeps in its history file.

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mrejas/lynx-cli/internal/config"
+	"github.com/mrejas/lynxctl/internal/config"
 )
 
 // testEnv runs commands against a temporary config dir and file secret store.

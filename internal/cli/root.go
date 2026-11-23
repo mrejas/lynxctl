@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mrejas/lynx-cli/internal/output"
+	"github.com/mrejas/lynxctl/internal/output"
 )
 
 // knownNames are the names the binary is shipped under. Help texts use the

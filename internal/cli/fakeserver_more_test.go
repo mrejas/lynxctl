@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mrejas/lynx-cli/internal/api"
+	"github.com/mrejas/lynxctl/internal/api"
 )
 
 // Generic documents, keyed by collection path, then ID.

@@ -15,9 +15,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mrejas/lynx-cli/internal/api"
-	"github.com/mrejas/lynx-cli/internal/output"
-	"github.com/mrejas/lynx-cli/internal/resolve"
+	"github.com/mrejas/lynxctl/internal/api"
+	"github.com/mrejas/lynxctl/internal/output"
+	"github.com/mrejas/lynxctl/internal/resolve"
 )
 
 // browseTTL is how long the browser reuses what it has fetched. Commands

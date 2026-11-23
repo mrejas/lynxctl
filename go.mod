@@ -1,4 +1,4 @@
-module github.com/mrejas/lynx-cli
+module github.com/mrejas/lynxctl
 
 go 1.26.4
 

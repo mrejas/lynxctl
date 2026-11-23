@@ -7,9 +7,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mrejas/lynx-cli/internal/config"
-	"github.com/mrejas/lynx-cli/internal/output"
-	"github.com/mrejas/lynx-cli/internal/resolve"
+	"github.com/mrejas/lynxctl/internal/config"
+	"github.com/mrejas/lynxctl/internal/output"
+	"github.com/mrejas/lynxctl/internal/resolve"
 )
 
 func (a *App) newUseCommand() *cobra.Command {

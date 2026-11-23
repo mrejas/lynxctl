@@ -15,7 +15,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mrejas/lynx-cli/internal/api"
+	"github.com/mrejas/lynxctl/internal/api"
 )
 
 // fakeServer is a small in-memory stand-in for the IoT Open API.

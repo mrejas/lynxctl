@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mrejas/lynx-cli/internal/api"
-	"github.com/mrejas/lynx-cli/internal/mqtt"
+	"github.com/mrejas/lynxctl/internal/api"
+	"github.com/mrejas/lynxctl/internal/mqtt"
 )
 
 func TestParseDuration(t *testing.T) {

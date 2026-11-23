@@ -15,8 +15,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/mrejas/lynx-cli/internal/api"
-	"github.com/mrejas/lynx-cli/internal/output"
+	"github.com/mrejas/lynxctl/internal/api"
+	"github.com/mrejas/lynxctl/internal/output"
 )
 
 // parsePairs parses repeated key=value arguments.

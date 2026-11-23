@@ -14,9 +14,9 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/mrejas/lynx-cli/internal/api"
-	"github.com/mrejas/lynx-cli/internal/output"
-	"github.com/mrejas/lynx-cli/internal/resolve"
+	"github.com/mrejas/lynxctl/internal/api"
+	"github.com/mrejas/lynxctl/internal/output"
+	"github.com/mrejas/lynxctl/internal/resolve"
 )
 
 // objectType describes devices and functions, which share model and

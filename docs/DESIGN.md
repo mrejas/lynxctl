@@ -66,7 +66,7 @@ nobody should need to look up an installation ID twice.
 - **Releases:** GoReleaser. It builds `.deb`/`.rpm`, a `.tar.gz` for Linux
   and macOS and a `.zip` for Windows. Distribution through scoop and winget
   is a later step.
-- **Module path:** `github.com/mrejas/lynx-cli`.
+- **Module path:** `github.com/mrejas/lynxctl`.
 
 ## Concepts
 

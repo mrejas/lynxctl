@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mrejas/lynx-cli/internal/api"
-	"github.com/mrejas/lynx-cli/internal/resolve"
+	"github.com/mrejas/lynxctl/internal/api"
+	"github.com/mrejas/lynxctl/internal/resolve"
 )
 
 // Exit codes. See docs/DESIGN.md.

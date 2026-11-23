@@ -7,7 +7,7 @@ package main
 import (
 	"os"
 
-	"github.com/mrejas/lynx-cli/internal/cli"
+	"github.com/mrejas/lynxctl/internal/cli"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".

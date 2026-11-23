@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mrejas/lynx-cli/internal/api"
+	"github.com/mrejas/lynxctl/internal/api"
 )
 
 // parseDuration extends time.ParseDuration with days ("7d") and weeks

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mrejas/lynx-cli/internal/mqtt"
+	"github.com/mrejas/lynxctl/internal/mqtt"
 )
 
 func browseSetup(t *testing.T) *testEnv {

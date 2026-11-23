@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mrejas/lynx-cli/internal/api"
+	"github.com/mrejas/lynxctl/internal/api"
 )
 
 // setup logs in and selects installation 10.
