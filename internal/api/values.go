@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 // Status is a reported value of a topic.
@@ -18,6 +19,7 @@ type Status struct {
 	Value          float64 `json:"value"`
 	Msg            string  `json:"msg,omitempty"`
 	// Topic includes the client ID prefix, e.g. "1010/obj/zwave/12/temperature".
+	// The status endpoint leaves the prefix out; Client.Status adds it.
 	Topic string `json:"topic"`
 }
 
@@ -33,7 +35,19 @@ func (c *Client) Status(ctx context.Context, installationID int64, topics []stri
 		// The POST variant takes the topics in the body, which avoids long URLs.
 		err = c.call(ctx, http.MethodPost, path, topics, &list)
 	}
+	for i := range list {
+		list[i].Topic = withClientPrefix(list[i].ClientID, list[i].Topic)
+	}
 	return list, err
+}
+
+// withClientPrefix adds "<clientID>/" to topic unless it is already there.
+func withClientPrefix(clientID int64, topic string) string {
+	prefix := strconv.FormatInt(clientID, 10) + "/"
+	if clientID == 0 || strings.HasPrefix(topic, prefix) {
+		return topic
+	}
+	return prefix + topic
 }
 
 // LogQuery selects entries from the value log.

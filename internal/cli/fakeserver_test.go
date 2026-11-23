@@ -248,8 +248,11 @@ func newFakeServer(t *testing.T) *fakeServer {
 				}
 			}
 		}
+		// Like the real server, the status list gives topics without the
+		// client ID prefix (the log keeps it).
 		list := []api.Status{}
 		for _, v := range latest {
+			v.Topic = strings.TrimPrefix(v.Topic, strconv.FormatInt(v.ClientID, 10)+"/")
 			list = append(list, v)
 		}
 		writeJSON(w, list)
