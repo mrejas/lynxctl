@@ -152,6 +152,26 @@ func TestGet(t *testing.T) {
 	}
 }
 
+func TestGetShowsMsg(t *testing.T) {
+	srv, env := valueSetup(t)
+	if r := env.mustRun("", "get"); strings.Contains(r.stdout, "MSG") {
+		t.Errorf("get shows MSG without messages:\n%s", r.stdout)
+	}
+	srv.addValue(10, "obj/lora/abc/payload", 0, float64(time.Now().Unix()))
+	srv.mu.Lock()
+	srv.values[len(srv.values)-1].Msg = "bdd01d"
+	srv.mu.Unlock()
+	for _, args := range [][]string{
+		{"get", "--topic", "obj/lora/abc/payload"},
+		{"log", "--topic", "obj/lora/abc/payload"},
+	} {
+		r := env.mustRun("", args...)
+		if !strings.Contains(r.stdout, "MSG") || !strings.Contains(r.stdout, "bdd01d") || strings.Contains(r.stdout, "TOPIC") {
+			t.Errorf("%v:\n%s", args, r.stdout)
+		}
+	}
+}
+
 func TestSet(t *testing.T) {
 	srv, env := valueSetup(t)
 

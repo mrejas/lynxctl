@@ -272,6 +272,7 @@ only the raw values, one per line.`,
 				}
 				rows.Rows = append(rows.Rows, []string{t.name(), v.Formatted, formatTimestamp(v.Timestamp), id, t.topic, raw, v.Msg})
 			}
+			showMsgColumn(&rows, views)
 			return pr.List(views, rows)
 		},
 	}
@@ -481,6 +482,7 @@ func (a *App) showLog(ctx context.Context, refs []string, opts logOptions) error
 		}
 		rows.Rows = append(rows.Rows, append(row, v.Formatted, t.topic, rawValue(entries[i].Value), v.Msg))
 	}
+	showMsgColumn(&rows, views)
 	if err := pr.List(views, rows); err != nil {
 		return err
 	}
@@ -619,5 +621,16 @@ func (a *App) printWatched(t target, payload []byte, width int) {
 			line += "  (" + msg.Msg + ")"
 		}
 		fmt.Fprintln(a.Out, line)
+	}
+}
+
+// showMsgColumn shows the msg column (the last one) in the normal table too
+// when any value has a message, e.g. the payload of a LoRa device.
+func showMsgColumn(rows *output.Rows, views []valueView) {
+	for _, v := range views {
+		if v.Msg != "" {
+			rows.Columns[len(rows.Columns)-1].Wide = false
+			return
+		}
 	}
 }
