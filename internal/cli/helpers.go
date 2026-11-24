@@ -63,38 +63,69 @@ func globMatch(pattern, s string) bool {
 
 // metaMatches applies --meta filters locally, for lists the API cannot
 // filter. Protected meta keys count as well.
+// A * in a key matches any keys that fit the pattern.
 func metaMatches(pairs [][2]string, metas ...api.Meta) bool {
 	for _, p := range pairs {
-		found := false
-		for _, m := range metas {
-			if v, ok := m[p[0]]; ok && globMatch(p[1], v) {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !metaPairMatches(p, metas) {
 			return false
 		}
 	}
 	return true
 }
 
-const metaFilterHelp = "only show those whose meta `key=value` matches; * is a wildcard, a key alone means it is set (repeatable)"
+func metaPairMatches(p [2]string, metas []api.Meta) bool {
+	for _, m := range metas {
+		if !strings.Contains(p[0], "*") {
+			if v, ok := m[p[0]]; ok && globMatch(p[1], v) {
+				return true
+			}
+			continue
+		}
+		for k, v := range m {
+			if globMatch(p[0], k) && globMatch(p[1], v) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+const metaFilterHelp = "only show those whose meta `key=value` matches; * is a wildcard (also in keys), a key alone means it is set (repeatable)"
 
 // metaFilter builds the query for list endpoints from --meta and --type.
-func metaFilter(metaFlags []string, typ string) (url.Values, error) {
+// The API cannot match keys with wildcards, so those filters are returned
+// as local, to be applied to the listed objects with metaMatches.
+func metaFilter(metaFlags []string, typ string) (q url.Values, local [][2]string, err error) {
 	pairs, err := metaPairs(metaFlags)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	q := url.Values{}
+	q = url.Values{}
 	for _, p := range pairs {
-		q.Add(p[0], p[1])
+		if strings.Contains(p[0], "*") {
+			local = append(local, p)
+		} else {
+			q.Add(p[0], p[1])
+		}
 	}
 	if typ != "" {
 		q.Set("type", typ)
 	}
-	return q, nil
+	return q, local, nil
+}
+
+// keepMatching keeps the items whose meta matches the local filters.
+func keepMatching[T any](list []T, local [][2]string, meta metaFunc[T]) []T {
+	if len(local) == 0 {
+		return list
+	}
+	kept := []T{}
+	for _, o := range list {
+		if m, p := meta(o); metaMatches(local, m, p) {
+			kept = append(kept, o)
+		}
+	}
+	return kept
 }
 
 // readInput reads a file, or stdin for "-".

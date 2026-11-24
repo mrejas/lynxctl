@@ -132,9 +132,10 @@ exact name.`, t.noun)
 }
 
 type listOptions struct {
-	meta   []string
-	typ    string
-	device string
+	meta    []string
+	typ     string
+	device  string
+	columns []string
 }
 
 func (a *App) newObjectListCommand(t objectType) *cobra.Command {
@@ -147,6 +148,8 @@ func (a *App) newObjectListCommand(t objectType) *cobra.Command {
   %[1]s %[2]s list --type temperature
   %[1]s %[2]s list --meta name='Kitchen*'
   %[1]s %[2]s list --meta pinned        # has the key, any value
+  %[1]s %[2]s list -c id,name,location  # choose columns; unknown names are meta keys
+  %[1]s %[2]s list -c +location         # the default columns plus a meta key
   %[1]s %[2]s list -q            # IDs only, for scripts`, a.Name, t.noun),
 		Args: usageArgs(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -157,6 +160,7 @@ func (a *App) newObjectListCommand(t objectType) *cobra.Command {
 	f.StringArrayVar(&opts.meta, "meta", nil, metaFilterHelp)
 	f.StringVar(&opts.typ, "type", "", "only show objects of this type")
 	_ = cmd.RegisterFlagCompletionFunc("type", a.completeTypes(t))
+	addColumnsFlag(cmd, &opts.columns, objectColumns(t))
 	if t.kind == api.FunctionX {
 		f.StringVar(&opts.device, "device", "", "only show functions of this device (ID or name)")
 		_ = cmd.RegisterFlagCompletionFunc("device", a.completeObjects(deviceType))
@@ -165,15 +169,18 @@ func (a *App) newObjectListCommand(t objectType) *cobra.Command {
 }
 
 func (a *App) newDeviceFunctionsCommand() *cobra.Command {
-	return &cobra.Command{
+	var columns []string
+	cmd := &cobra.Command{
 		Use:               "functions <device>",
 		Short:             "List the functions of a device",
 		Args:              usageArgs(cobra.ExactArgs(1)),
 		ValidArgsFunction: a.completeObjectArg(deviceType),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.listObjects(cmd.Context(), functionType, listOptions{device: args[0]})
+			return a.listObjects(cmd.Context(), functionType, listOptions{device: args[0], columns: columns})
 		},
 	}
+	addColumnsFlag(cmd, &columns, objectColumns(functionType))
+	return cmd
 }
 
 func (a *App) listObjects(ctx context.Context, t objectType, opts listOptions) error {
@@ -181,7 +188,7 @@ func (a *App) listObjects(ctx context.Context, t objectType, opts listOptions) e
 	if err != nil {
 		return err
 	}
-	filter, err := metaFilter(opts.meta, opts.typ)
+	filter, local, err := metaFilter(opts.meta, opts.typ)
 	if err != nil {
 		return err
 	}
@@ -200,30 +207,36 @@ func (a *App) listObjects(ctx context.Context, t objectType, opts listOptions) e
 	if err != nil {
 		return err
 	}
+	list = keepMatching(list, local, objectMeta)
 	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
 	if list == nil {
 		list = []api.Object{}
 	}
-	return pr.List(list, objectRows(t, list))
+	rows, err := listRows(pr, objectColumns(t), list, 0, opts.columns, objectMeta)
+	if err != nil {
+		return err
+	}
+	return pr.List(list, rows)
 }
 
-func objectRows(t objectType, list []api.Object) output.Rows {
-	rows := output.Rows{Columns: []output.Column{{Header: "id"}, {Header: "name"}, {Header: "type"}}}
+func objectMeta(o api.Object) (api.Meta, api.Meta) { return o.Meta, o.ProtectedMeta }
+
+func objectColumns(t objectType) []listColumn[api.Object] {
+	cols := []listColumn[api.Object]{
+		{header: "id", value: func(o api.Object) string { return strconv.FormatInt(o.ID, 10) }},
+		{header: "name", value: func(o api.Object) string { return o.Name() }},
+		{header: "type", value: func(o api.Object) string { return o.Type }},
+	}
 	if t.kind == api.FunctionX {
-		rows.Columns = append(rows.Columns,
-			output.Column{Header: "device"},
-			output.Column{Header: "topic read"},
-			output.Column{Header: "topic write", Wide: true})
+		cols = append(cols,
+			listColumn[api.Object]{header: "device", value: func(o api.Object) string { return o.Meta["device_id"] }},
+			listColumn[api.Object]{header: "topic read", value: func(o api.Object) string { return o.Meta["topic_read"] }},
+			listColumn[api.Object]{header: "topic write", wide: true, value: func(o api.Object) string { return o.Meta["topic_write"] }})
 	}
-	rows.Columns = append(rows.Columns, output.Column{Header: "updated", Wide: true})
-	for _, o := range list {
-		row := []string{strconv.FormatInt(o.ID, 10), o.Name(), o.Type}
-		if t.kind == api.FunctionX {
-			row = append(row, o.Meta["device_id"], o.Meta["topic_read"], o.Meta["topic_write"])
-		}
-		rows.Rows = append(rows.Rows, append(row, formatTime(o.Updated)))
-	}
-	return rows
+	return append(cols,
+		listColumn[api.Object]{header: "installation", extra: true, value: func(o api.Object) string { return strconv.FormatInt(o.InstallationID, 10) }},
+		listColumn[api.Object]{header: "created", extra: true, value: func(o api.Object) string { return formatTime(o.Created) }},
+		listColumn[api.Object]{header: "updated", wide: true, value: func(o api.Object) string { return formatTime(o.Updated) }})
 }
 
 func (a *App) newObjectGetCommand(t objectType) *cobra.Command {

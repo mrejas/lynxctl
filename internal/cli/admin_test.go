@@ -35,6 +35,12 @@ func TestOrganizations(t *testing.T) {
 	if r := env.mustRun("", "org", "meta", "get", "malmö north", "region"); r.stdout != "south\n" {
 		t.Errorf("meta get = %q", r.stdout)
 	}
+	if r := env.mustRun("", "org", "ls", "--meta", "reg*=s*", "-q"); strings.Count(r.stdout, "\n") != 1 {
+		t.Errorf("org ls --meta reg*=s* = %q", r.stdout)
+	}
+	if r := env.mustRun("", "org", "ls", "--meta", "region", "-c", "name,region", "-o", "csv"); r.stdout != "name,region\nMalmö North,south\n" {
+		t.Errorf("org ls -c name,region = %q", r.stdout)
+	}
 
 	if r := env.run("", "org", "delete", "north", "--yes"); r.code != ExitNotFound {
 		t.Errorf("delete by partial name: exit %d", r.code)
@@ -81,6 +87,18 @@ func TestUsers(t *testing.T) {
 	env.mustRun("", "user", "meta", "set", "eve", "team=blue")
 	if r := env.mustRun("", "user", "meta", "get", "eve", "team"); r.stdout != "blue\n" {
 		t.Errorf("user meta get = %q", r.stdout)
+	}
+	r = env.mustRun("", "user", "ls", "--meta", "team", "-c", "+team")
+	for _, want := range []string{"EMAIL", "ROLE", "TEAM", "blue"} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("user ls -c +team lacks %q:\n%s", want, r.stdout)
+		}
+	}
+	if r := env.mustRun("", "user", "ls", "--meta", "te*=bl*", "-c", "email", "-o", "csv"); r.stdout != "email\neve@example.com\n" {
+		t.Errorf("user ls --meta te*=bl* = %q", r.stdout)
+	}
+	if strings.Contains(r.stdout, "MOBILE") {
+		t.Errorf("user ls -c +team shows a wide column:\n%s", r.stdout)
 	}
 
 	// Own password: the current one is required; others' only the new one.

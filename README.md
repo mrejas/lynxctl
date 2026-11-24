@@ -59,6 +59,7 @@ lynxctl login                    # https://lynx.iotopen.se, prompts for password
 lynxctl use "main street"        # select an installation by ID, client ID or (part of) its name
 lynxctl whoami
 lynxctl function list
+lynxctl function list -c +location       # default columns plus the "location" meta key
 lynxctl function get kitchen             # unique part of the name
 lynxctl function meta set kitchen unit=°C
 lynxctl device functions "hall sensor"

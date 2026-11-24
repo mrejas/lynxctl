@@ -367,6 +367,9 @@ lynxctl installation meta set customer=ACME         # current installation, or -
   directly to the API's metadata filters. Organizations cannot be filtered
   by the API, so `organization list --meta` filters locally: case-insensitive,
   with `*` matching any text, protected keys included.
+- Keys may contain `*` as well (`--meta 'integration.desigo.*'`). The API
+  matches keys literally, so such filters are applied locally to the listed
+  objects, the same way as for organizations.
 - `meta set` uses `PUT .../meta/{key}?create_missing=true`, so setting a key
   works whether or not it already exists.
 - `edit` downloads the object and opens it as YAML in `$VISUAL`, then
@@ -609,6 +612,15 @@ as directories:
 - The default output is a human-readable table with the most relevant
   columns.
 - `-o wide` gives the table with more columns.
+- Lists of objects with meta (devices, functions, installations,
+  organizations and users) take `-c` / `--columns` to choose the columns of
+  the table and CSV output: `-c id,name,integration.desigo.id`. A name is
+  one of the list's column headers, with spaces written as underscores
+  (`client_id`); devices and functions also have `installation` and
+  `created`. Any other name is a meta key (protected meta included), and
+  `meta.<key>` reaches a key that has the same name as a column. A leading
+  `+` adds to the default columns (`-c +location`). The chosen columns are
+  shown also without `-o wide`. JSON, YAML and `-q` are not affected.
 - `-o json`, `-o yaml` and `-o csv` give machine-readable output. JSON and
   YAML contain the full API objects.
 - `-q` / `--quiet` prints only IDs, one per line, for piping:

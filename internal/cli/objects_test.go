@@ -70,6 +70,34 @@ func TestDevicesAndFunctions(t *testing.T) {
 		t.Errorf("functions in another installation: %q", r.stdout)
 	}
 
+	// Choosing columns; names that are not built in are meta keys.
+	env.mustRun("", "fn", "meta", "set", "lamp", "integration.desigo.id=D-7")
+	wantCSV := "name,integration.desigo.id\nKitchen temperature,\nKitchen lamp,D-7\n"
+	if r := env.mustRun("", "fn", "ls", "-c", "name,integration.desigo.id", "-o", "csv"); r.stdout != wantCSV {
+		t.Errorf("-c name,integration.desigo.id -o csv = %q, want %q", r.stdout, wantCSV)
+	}
+	r = env.mustRun("", "fn", "ls", "-c", "+integration.desigo.id", "--meta", "integration.desigo.id")
+	for _, want := range []string{"ID", "NAME", "DEVICE", "TOPIC READ", "INTEGRATION.DESIGO.ID", "D-7"} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("-c +integration.desigo.id lacks %q:\n%s", want, r.stdout)
+		}
+	}
+	// The API cannot match keys with wildcards, so that is done locally.
+	env.mustRun("", "fn", "meta", "set", "temperature", "integration.desigo.id_write=W-1")
+	wantCSV = "name,integration.desigo.id,integration.desigo.id_write\nKitchen temperature,,W-1\nKitchen lamp,D-7,\n"
+	if r := env.mustRun("", "fn", "ls", "--meta", "integration.desigo.id*", "-c", "name,integration.desigo.id,integration.desigo.id_write", "-o", "csv"); r.stdout != wantCSV {
+		t.Errorf("--meta integration.desigo.id* = %q, want %q", r.stdout, wantCSV)
+	}
+	if r := env.mustRun("", "fn", "ls", "--meta", "*desigo*=W-*", "-q"); r.stdout != strconv.FormatInt(fnID, 10)+"\n" {
+		t.Errorf("--meta *desigo*=W-* -q = %q", r.stdout)
+	}
+	if r := env.mustRun("", "get", "--meta", "integration.desigo.*", "-q"); strings.Count(r.stdout, "\n") != 1 {
+		t.Errorf("get --meta integration.desigo.* -q = %q", r.stdout)
+	}
+	if r := env.mustRun("", "device", "functions", "sensor", "-c", "id", "-o", "csv"); r.stdout != "id\n"+want {
+		t.Errorf("device functions -c id = %q", r.stdout)
+	}
+
 	// References.
 	r = env.mustRun("", "function", "get", "temperature")
 	if !strings.Contains(r.stdout, "Kitchen temperature") || !strings.Contains(r.stdout, "topic_read:") {
@@ -257,6 +285,15 @@ func TestInstallations(t *testing.T) {
 	}
 	if r := env.mustRun("", "inst", "ls", "--meta", "customer=AC*", "-q"); r.stdout != "10\n" {
 		t.Errorf("list --meta = %q", r.stdout)
+	}
+	if r := env.mustRun("", "inst", "ls", "--meta", "customer", "-c", "id,client_id,customer", "-o", "csv"); !strings.HasPrefix(r.stdout, "id,client id,customer\n10,") || !strings.Contains(r.stdout, ",ACME\n") {
+		t.Errorf("list -c id,client_id,customer = %q", r.stdout)
+	}
+	if r := env.mustRun("", "inst", "ls", "--meta", "cust*=oth*", "-q"); r.stdout != "12\n" {
+		t.Errorf("list --meta cust*=oth* = %q", r.stdout)
+	}
+	if r := env.mustRun("", "inst", "ls", "--meta", "customer", "-c", "customer", "-q"); r.stdout != "10\n12\n" {
+		t.Errorf("list -c customer -q = %q", r.stdout)
 	}
 
 	// Create; the organization defaults to the user's only one.

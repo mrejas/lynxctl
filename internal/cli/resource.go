@@ -51,14 +51,17 @@ type resource struct {
 	self string
 	// defaultRef, if set, makes the argument of get optional.
 	defaultRef string
+	// metaColumns gives the list command --columns, which can show meta
+	// keys as columns.
+	metaColumns bool
+}
+
+func jsonMeta(o api.JSONObject) (api.Meta, api.Meta) {
+	return toMeta(o["meta"]), toMeta(o["protected_meta"])
 }
 
 // column is a table column of a resource list.
-type column struct {
-	header string
-	value  func(api.JSONObject) string
-	wide   bool
-}
+type column = listColumn[api.JSONObject]
 
 // field returns a column showing a top-level field.
 func field(header, key string) column {
@@ -227,18 +230,7 @@ func (a *App) completeResource(r *resource) completeFunc {
 }
 
 func (r *resource) rows(list []api.JSONObject) output.Rows {
-	rows := output.Rows{}
-	for _, c := range r.columns {
-		rows.Columns = append(rows.Columns, output.Column{Header: c.header, Wide: c.wide})
-	}
-	for _, o := range list {
-		row := make([]string, len(r.columns))
-		for i, c := range r.columns {
-			row[i] = c.value(o)
-		}
-		rows.Rows = append(rows.Rows, row)
-	}
-	return rows
+	return columnRows(r.columns, list, 0)
 }
 
 func (a *App) newResourceListCommand(r *resource) *cobra.Command {
@@ -255,6 +247,10 @@ func (a *App) newResourceListCommand(r *resource) *cobra.Command {
 	var keep func(api.JSONObject) (bool, error)
 	if r.localFilter != nil {
 		keep = r.localFilter(cmd)
+	}
+	var columns []string
+	if r.metaColumns {
+		addColumnsFlag(cmd, &columns, r.columns)
 	}
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		pr, err := a.printer()
@@ -284,7 +280,11 @@ func (a *App) newResourceListCommand(r *resource) *cobra.Command {
 			}
 			list = kept
 		}
-		return pr.List(list, r.rows(list))
+		rows, err := listRows(pr, r.columns, list, 0, columns, jsonMeta)
+		if err != nil {
+			return err
+		}
+		return pr.List(list, rows)
 	}
 	return cmd
 }

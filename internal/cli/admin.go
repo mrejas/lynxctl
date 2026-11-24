@@ -79,8 +79,9 @@ func (a *App) organizationResource() *resource {
 				return strconv.Itoa(len(c))
 			}},
 		},
-		readOnly: []string{"id", "children"},
-		required: []string{"name"},
+		readOnly:    []string{"id", "children"},
+		required:    []string{"name"},
+		metaColumns: true,
 		// The API cannot filter organizations by meta, so it is done here.
 		localFilter: func(cmd *cobra.Command) func(api.JSONObject) (bool, error) {
 			var meta []string
@@ -295,27 +296,40 @@ func (a *App) userResource() *resource {
 			wideField("mobile", "mobile"),
 			wideField("installations", "assigned_installations"),
 		},
-		readOnly: []string{"id", "assigned_installations"},
-		required: []string{"email", "first_name", "last_name", "role", "organisations"},
+		readOnly:    []string{"id", "assigned_installations"},
+		required:    []string{"email", "first_name", "last_name", "role", "organisations"},
+		metaColumns: true,
 		createExample: fmt.Sprintf(`  %[1]s user create --email jane@example.com --first-name Jane --last-name Doe --role User
   echo "$PASSWORD" | %[1]s user create --email bot@example.com --first-name Bot --last-name Account \
       --role Integration --org 7 --password-stdin`, a.Name),
-		listFlags: func(cmd *cobra.Command) func() (url.Values, error) {
-			var org int64
-			var meta []string
-			cmd.Flags().Int64Var(&org, "org", 0, "only show users of this organization")
-			cmd.Flags().StringArrayVar(&meta, "meta", nil, metaFilterHelp)
-			return func() (url.Values, error) {
-				q, err := metaFilter(meta, "")
-				if err != nil {
-					return nil, err
-				}
-				if org != 0 {
-					q.Set("organization_id", strconv.FormatInt(org, 10))
-				}
-				return q, nil
+	}
+	// --meta is sent to the API, except filters with wildcards in the key,
+	// which are applied locally.
+	var meta []string
+	r.listFlags = func(cmd *cobra.Command) func() (url.Values, error) {
+		var org int64
+		cmd.Flags().Int64Var(&org, "org", 0, "only show users of this organization")
+		cmd.Flags().StringArrayVar(&meta, "meta", nil, metaFilterHelp)
+		return func() (url.Values, error) {
+			q, _, err := metaFilter(meta, "")
+			if err != nil {
+				return nil, err
 			}
-		},
+			if org != 0 {
+				q.Set("organization_id", strconv.FormatInt(org, 10))
+			}
+			return q, nil
+		}
+	}
+	r.localFilter = func(*cobra.Command) func(api.JSONObject) (bool, error) {
+		return func(o api.JSONObject) (bool, error) {
+			_, local, err := metaFilter(meta, "")
+			if err != nil {
+				return false, err
+			}
+			m, p := jsonMeta(o)
+			return metaMatches(local, m, p), nil
+		}
 	}
 	r.createFlags = func(cmd *cobra.Command) func(context.Context, api.JSONObject) error {
 		var email, first, last, role, mobile string

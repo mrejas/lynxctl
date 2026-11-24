@@ -84,20 +84,22 @@ func (a *App) fullInstallation(ctx context.Context, ref string) (*session, *api.
 }
 
 func (a *App) newInstallationListCommand() *cobra.Command {
-	var meta []string
+	var meta, columns []string
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List installations",
 		Example: fmt.Sprintf(`  %[1]s installation list
-  %[1]s installation list --meta customer='ACME*'`, a.Name),
+  %[1]s installation list --meta customer='ACME*'
+  %[1]s installation list -c id,name,customer   # choose columns; unknown names are meta keys
+  %[1]s installation list -c +customer          # the default columns plus a meta key`, a.Name),
 		Args: usageArgs(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			pr, err := a.printer()
 			if err != nil {
 				return err
 			}
-			filter, err := metaFilter(meta, "")
+			filter, local, err := metaFilter(meta, "")
 			if err != nil {
 				return err
 			}
@@ -109,24 +111,15 @@ func (a *App) newInstallationListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			list = keepMatching(list, local, installationMeta)
 			sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
 			var current int64
 			if s.Profile != nil && s.Profile.Installation != nil {
 				current = s.Profile.Installation.ID
 			}
-			rows := output.Rows{Columns: []output.Column{
-				{Header: "current"}, {Header: "id"}, {Header: "name"}, {Header: "client id"},
-				{Header: "organization"}, {Header: "notes", Wide: true}, {Header: "created", Wide: true},
-			}, IDColumn: 1}
-			for _, inst := range list {
-				mark := ""
-				if inst.ID == current {
-					mark = "*"
-				}
-				rows.Rows = append(rows.Rows, []string{
-					mark, strconv.FormatInt(inst.ID, 10), inst.Name, strconv.FormatInt(inst.ClientID, 10),
-					strconv.FormatInt(inst.OrganizationID, 10), firstLine(inst.Notes), formatTime(inst.Created),
-				})
+			rows, err := listRows(pr, installationColumns(current), list, 1, columns, installationMeta)
+			if err != nil {
+				return err
 			}
 			if list == nil {
 				list = []api.Installation{}
@@ -135,7 +128,28 @@ func (a *App) newInstallationListCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringArrayVar(&meta, "meta", nil, metaFilterHelp)
+	addColumnsFlag(cmd, &columns, installationColumns(0))
 	return cmd
+}
+
+func installationMeta(inst api.Installation) (api.Meta, api.Meta) { return inst.Meta, nil }
+
+func installationColumns(current int64) []listColumn[api.Installation] {
+	type col = listColumn[api.Installation]
+	return []col{
+		{header: "current", value: func(inst api.Installation) string {
+			if inst.ID == current {
+				return "*"
+			}
+			return ""
+		}},
+		{header: "id", value: func(inst api.Installation) string { return strconv.FormatInt(inst.ID, 10) }},
+		{header: "name", value: func(inst api.Installation) string { return inst.Name }},
+		{header: "client id", value: func(inst api.Installation) string { return strconv.FormatInt(inst.ClientID, 10) }},
+		{header: "organization", value: func(inst api.Installation) string { return strconv.FormatInt(inst.OrganizationID, 10) }},
+		{header: "notes", wide: true, value: func(inst api.Installation) string { return firstLine(inst.Notes) }},
+		{header: "created", wide: true, value: func(inst api.Installation) string { return formatTime(inst.Created) }},
+	}
 }
 
 func firstLine(s string) string {
